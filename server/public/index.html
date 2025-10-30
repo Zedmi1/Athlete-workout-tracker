@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Workout App for Athletes</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div id="login-screen" class="screen active">
+        <div class="login-background"></div>
+        <div class="login-container">
+            <div class="login-header">
+                <div class="app-icon">⚡</div>
+                <h1>Workout App for Athletes</h1>
+                <p>Track your progress, connect with athletes</p>
+            </div>
+
+            <div class="auth-tabs">
+                <button class="tab-btn active" onclick="switchTab('login')">Login</button>
+                <button class="tab-btn" onclick="switchTab('register')">Register</button>
+            </div>
+
+            <form id="auth-form" onsubmit="handleLogin(event)">
+                <div id="name-field" class="form-group" style="display: none;">
+                    <label>Name</label>
+                    <input type="text" id="name-input" placeholder="Enter your name">
+                </div>
+
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="email-input" placeholder="Enter your email" required>
+                </div>
+
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="password-input" placeholder="Enter your password" required>
+                </div>
+
+                <div id="sport-field" class="form-group" style="display: none;">
+                    <label>Sport Interests (Select all that apply)</label>
+                    <div id="register-sports-checkboxes" class="sports-checkbox-group"></div>
+                </div>
+
+                <button type="submit" class="btn-primary" id="auth-submit-btn">Continue to App</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="app-container" class="screen">
+        <nav class="desktop-nav">
+            <div class="nav-content">
+                <div class="nav-brand">
+                    <div class="brand-icon">💪</div>
+                    <span>Workout App</span>
+                </div>
+                <div class="nav-items">
+                    <button class="nav-btn active" onclick="navigateTo('home')">
+                        <span class="icon">🏠</span> Home
+                    </button>
+                    <button class="nav-btn" onclick="navigateTo('workouts')">
+                        <span class="icon">💪</span> Workouts
+                    </button>
+                    <button class="nav-btn" onclick="navigateTo('progress')">
+                        <span class="icon">📈</span> Progress
+                    </button>
+                    <button class="nav-btn" onclick="navigateTo('profile')">
+                        <span class="icon">👤</span> Profile
+                    </button>
+                </div>
+            </div>
+        </nav>
+
+        <nav class="mobile-nav">
+            <button class="mobile-nav-btn active" onclick="navigateTo('home')">
+                <span class="icon">🏠</span>
+                <span class="label">Home</span>
+            </button>
+            <button class="mobile-nav-btn" onclick="navigateTo('workouts')">
+                <span class="icon">💪</span>
+                <span class="label">Workouts</span>
+            </button>
+            <button class="mobile-nav-btn" onclick="navigateTo('progress')">
+                <span class="icon">📈</span>
+                <span class="label">Progress</span>
+            </button>
+            <button class="mobile-nav-btn" onclick="navigateTo('profile')">
+                <span class="icon">👤</span>
+                <span class="label">Profile</span>
+            </button>
+        </nav>
+
+        <div id="home-screen" class="page-content active">
+            <div class="container">
+                <div class="grid-layout">
+                    <div class="main-content">
+                        <div class="page-header">
+                            <h1>Activity Feed</h1>
+                            <p>See what athletes in your area are achieving</p>
+                        </div>
+                        <div id="activity-feed"></div>
+                    </div>
+
+                    <div class="sidebar">
+                        <div class="card">
+                            <h2>This Week</h2>
+                            <div class="progress-section">
+                                <div class="progress-item">
+                                    <div class="progress-header">
+                                        <span>Workouts</span>
+                                        <span class="progress-label" id="weekly-progress-label">5/5</span>
+                                    </div>
+                                    <div class="progress-bar">
+                                        <div class="progress-fill" id="weekly-progress" style="width: 100%"></div>
+                                    </div>
+                                </div>
+                                <div class="progress-item">
+                                    <div class="progress-header">
+                                        <span>Goal Progress</span>
+                                        <span class="progress-label">100%</span>
+                                    </div>
+                                    <div class="progress-bar">
+                                        <div class="progress-fill secondary" style="width: 100%"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="workouts-screen" class="page-content">
+            <div class="container">
+                <div class="page-header-with-action">
+                    <div>
+                        <h1>My Workouts</h1>
+                        <p>Log and track your training sessions</p>
+                    </div>
+                    <button class="btn-primary" onclick="toggleWorkoutForm()">
+                        <span id="form-toggle-text">+ Log Workout</span>
+                    </button>
+                </div>
+
+                <div id="workout-form" class="card" style="display: none;">
+                    <h2>New Workout</h2>
+                    <form onsubmit="saveWorkout(event)">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label>Exercise Name *</label>
+                                <input type="text" id="exercise-name" placeholder="e.g., Sprint Intervals" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Sport *</label>
+                                <select id="workout-sport">
+                                    <option value="Football">Football</option>
+                                    <option value="Basketball">Basketball</option>
+                                    <option value="Athletics">Athletics</option>
+                                    <option value="Swimming">Swimming</option>
+                                    <option value="Cycling">Cycling</option>
+                                    <option value="Tennis">Tennis</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Sets</label>
+                                <input type="text" id="workout-sets" placeholder="e.g., 3">
+                            </div>
+                            <div class="form-group">
+                                <label>Reps</label>
+                                <input type="text" id="workout-reps" placeholder="e.g., 12">
+                            </div>
+                            <div class="form-group">
+                                <label>Distance</label>
+                                <input type="text" id="workout-distance" placeholder="e.g., 5km">
+                            </div>
+                            <div class="form-group">
+                                <label>Duration</label>
+                                <input type="text" id="workout-duration" placeholder="e.g., 45 min">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Notes</label>
+                            <textarea id="workout-notes" rows="3" placeholder="How did it go?"></textarea>
+                        </div>
+                        <button type="submit" class="btn-primary full-width">Save Workout</button>
+                    </form>
+                </div>
+
+                <h2>Recent Sessions</h2>
+                <div id="workouts-list"></div>
+            </div>
+        </div>
+
+        <div id="progress-screen" class="page-content">
+            <div class="container">
+                <div class="page-header">
+                    <h1>Progress Dashboard</h1>
+                    <p>Track your improvement and achievements</p>
+                </div>
+
+                <div class="filter-buttons">
+                    <button class="filter-btn" onclick="setProgressPeriod('week')">Week</button>
+                    <button class="filter-btn active" onclick="setProgressPeriod('month')">Month</button>
+                    <button class="filter-btn" onclick="setProgressPeriod('all')">All Time</button>
+                    <select id="sport-filter" class="sport-select">
+                        <option>All Sports</option>
+                        <option>Football</option>
+                        <option>Basketball</option>
+                        <option>Athletics</option>
+                        <option>Swimming</option>
+                        <option>Cycling</option>
+                    </select>
+                </div>
+
+                <div class="charts-grid">
+                    <div class="card">
+                        <h2>Workout Frequency</h2>
+                        <canvas id="frequency-chart"></canvas>
+                    </div>
+                    <div class="card">
+                        <h2>Sport Distribution</h2>
+                        <canvas id="sport-distribution-chart"></canvas>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>Average Workout Duration</h2>
+                    <canvas id="duration-chart"></canvas>
+                </div>
+
+                <div class="page-header">
+                    <h2>Personal Records</h2>
+                    <button class="btn-secondary">View All</button>
+                </div>
+
+                <div class="records-grid" id="personal-records"></div>
+
+            </div>
+        </div>
+
+        <div id="profile-screen" class="page-content">
+            <div class="container">
+                <div class="grid-layout">
+                    <div class="profile-sidebar">
+                        <div class="card">
+                            <div class="profile-header">
+                                <img id="profile-avatar" class="profile-avatar" alt="Profile">
+                                <h1 id="profile-name">Athlete</h1>
+                                <p id="profile-sport" class="profile-sport">Football Athlete</p>
+                            </div>
+
+                            <p id="profile-bio" class="profile-bio">Passionate athlete dedicated to pushing limits and achieving new personal records every day.</p>
+
+                            <div class="profile-tabs">
+                                <button class="tab-btn active" onclick="switchProfileTab('info')">👤 Info</button>
+                                <button class="tab-btn" onclick="switchProfileTab('settings')">⚙️ Settings</button>
+                            </div>
+
+                            <div id="profile-info-tab" class="tab-content active">
+                                <button class="btn-primary full-width" onclick="toggleEditMode()">
+                                    <span id="edit-btn-text">✏️ Edit Profile</span>
+                                </button>
+                            </div>
+
+                            <div id="profile-settings-tab" class="tab-content">
+                                <div class="settings-item">
+                                    <div class="settings-header">
+                                        <span>🎯 Weekly Goal</span>
+                                        <span class="goal-value" id="goal-display">5</span>
+                                    </div>
+                                    <input type="range" id="weekly-goal-slider" min="1" max="7" value="5" disabled>
+                                    <div class="range-labels">
+                                        <span>1/week</span>
+                                        <span>7/week</span>
+                                    </div>
+                                </div>
+
+                                <div class="settings-item" id="sports-selector-container" style="display: none;">
+                                    <div class="settings-header">
+                                        <span>🏃 Sport Interests</span>
+                                    </div>
+                                    <div id="sports-checkboxes" class="sports-checkbox-group"></div>
+                                </div>
+
+                                <div class="settings-item" id="exercises-list-container" style="display: none;">
+                                    <div class="settings-header">
+                                        <span>💪 Example Exercises by Sport</span>
+                                    </div>
+                                    <div id="exercises-list" class="exercises-list"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="action-buttons">
+                            <button class="btn-secondary full-width" onclick="navigateTo('search')">
+                                🔍 Find Athletes
+                            </button>
+                            <button class="btn-danger full-width" onclick="handleLogout()">
+                                🚪 Logout
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="main-content">
+                        <div class="card">
+                            <h2>Recent Activity</h2>
+                            <div id="profile-recent-workouts"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="search-screen" class="page-content">
+            <div class="container">
+                <div class="page-header">
+                    <h1>Find Athletes</h1>
+                    <p>Connect with athletes who share your passion</p>
+                </div>
+
+                <div class="search-filters">
+                    <div class="search-input-wrapper">
+                        <span class="search-icon">🔍</span>
+                        <input type="text" id="athlete-search" placeholder="Search by username..." oninput="filterAthletes()">
+                    </div>
+                    <select id="athlete-sport-filter" class="sport-select" onchange="filterAthletes()">
+                        <option>All Sports</option>
+                        <option>Football</option>
+                        <option>Basketball</option>
+                        <option>Athletics</option>
+                        <option>Swimming</option>
+                        <option>Cycling</option>
+                        <option>Tennis</option>
+                    </select>
+                </div>
+
+                <div id="recommended-section">
+                    <h2>Recommended for You</h2>
+                    <div class="athletes-grid" id="recommended-athletes"></div>
+                </div>
+
+                <div id="other-section">
+                    <h2>More Athletes</h2>
+                    <div class="athletes-grid" id="other-athletes"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
