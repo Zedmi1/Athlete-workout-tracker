@@ -65,6 +65,10 @@ const api = {
   },
   profile: {
     update: (data) => request('/api/user/profile', { method: 'PUT', body: JSON.stringify(data) })
+  },
+  users: {
+    search: (query) => request(`/api/users/search?query=${encodeURIComponent(query || '')}`),
+    follow: (userId) => request(`/api/users/${userId}/follow`, { method: 'POST' })
   }
 };
 
@@ -237,6 +241,7 @@ function navigateTo(screen) {
     renderProfile();
   } else if (screen === 'search') {
     document.getElementById('search-screen')?.classList.add('active');
+    filterAthletes();
   }
 }
 
@@ -537,14 +542,13 @@ async function initializeCharts() {
         options: {
           responsive: true,
           maintainAspectRatio: true,
-          indexAxis: 'y',
           scales: {
-            x: {
+            y: {
               beginAtZero: true,
               grid: { color: '#2a2a2a' },
               ticks: { color: '#b5b5b5', stepSize: 1 }
             },
-            y: {
+            x: {
               grid: { color: '#2a2a2a' },
               ticks: { color: '#b5b5b5' }
             }
@@ -561,21 +565,14 @@ async function initializeCharts() {
       const colors = ['#00ff88', '#00ccff', '#ff6b6b', '#ffd93d', '#a78bfa', '#fb923c', '#22d3ee', '#f472b6'];
       
       charts.duration = new Chart(durationCtx, {
-        type: 'line',
+        type: 'bar',
         data: {
           labels: sportDist.map(s => s.sport),
           datasets: [{
             label: 'Avg Duration (mins)',
             data: avgDurations,
-            borderColor: '#00ccff',
-            backgroundColor: 'rgba(0, 204, 255, 0.1)',
-            borderWidth: 3,
-            pointRadius: 8,
-            pointBackgroundColor: colors.slice(0, sportDist.length),
-            pointBorderColor: '#fff',
-            pointBorderWidth: 2,
-            tension: 0.4,
-            fill: true
+            backgroundColor: colors.slice(0, sportDist.length),
+            borderRadius: 8
           }]
         },
         options: {
@@ -696,6 +693,8 @@ async function toggleEditMode() {
   
   const bioElement = document.getElementById('profile-bio');
   const nameElement = document.getElementById('profile-name');
+  const sportElement = document.getElementById('profile-sport');
+  const sportSelectorContainer = document.getElementById('profile-sport-selector-container');
   const slider = document.getElementById('weekly-goal-slider');
   const sportsContainer = document.getElementById('sports-selector-container');
   const exercisesContainer = document.getElementById('exercises-list-container');
@@ -710,6 +709,10 @@ async function toggleEditMode() {
     nameElement.style.border = '1px solid #00ff88';
     nameElement.style.padding = '4px';
     nameElement.style.borderRadius = '4px';
+    
+    sportElement.style.display = 'none';
+    sportSelectorContainer.style.display = 'block';
+    renderProfileSportsCheckboxes();
     
     slider.disabled = false;
     sportsContainer.style.display = 'block';
@@ -728,6 +731,9 @@ async function toggleEditMode() {
     nameElement.contentEditable = false;
     nameElement.style.border = 'none';
     nameElement.style.padding = '0';
+    
+    sportElement.style.display = 'block';
+    sportSelectorContainer.style.display = 'none';
     
     slider.disabled = true;
     sportsContainer.style.display = 'none';
@@ -760,11 +766,31 @@ async function renderExercisesList() {
   }
 }
 
+function renderProfileSportsCheckboxes() {
+  const container = document.getElementById('profile-sports-checkboxes');
+  if (!container) return;
+  
+  container.innerHTML = availableSports.map(sport => {
+    const isSelected = currentUser?.sports?.includes(sport.name) || false;
+    return `
+      <label class="sport-checkbox">
+        <input type="checkbox" value="${sport.name}" ${isSelected ? 'checked' : ''}>
+        <span>${sport.name}</span>
+      </label>
+    `;
+  }).join('');
+}
+
+function getProfileSelectedSports() {
+  const checkboxes = document.querySelectorAll('#profile-sports-checkboxes input[type="checkbox"]:checked');
+  return Array.from(checkboxes).map(cb => cb.value);
+}
+
 async function saveProfile() {
   const name = document.getElementById('profile-name').textContent;
   const bio = document.getElementById('profile-bio').textContent;
   const weeklyGoal = parseInt(document.getElementById('weekly-goal-slider').value);
-  const sports = getSelectedSports();
+  const sports = getProfileSelectedSports();
   
   if (sports.length === 0) {
     alert('Please select at least one sport interest');
@@ -805,12 +831,83 @@ function updateWeeklyProgress() {
   if (progress) progress.style.width = `${Math.min(percentage, 100)}%`;
 }
 
-function filterAthletes() {
-  console.log('Athlete filtering not implemented with database yet');
+let allAthletes = [];
+
+async function filterAthletes() {
+  const searchQuery = document.getElementById('athlete-search')?.value || '';
+  
+  try {
+    allAthletes = await api.users.search(searchQuery);
+    renderAthletes();
+  } catch (e) {
+    console.error('Failed to search athletes:', e);
+  }
 }
 
 function renderAthletes() {
-  console.log('Athlete rendering not implemented with database yet');
+  const recommendedContainer = document.getElementById('recommended-athletes');
+  const otherContainer = document.getElementById('other-athletes');
+  
+  if (!recommendedContainer || !otherContainer) return;
+  
+  if (allAthletes.length === 0) {
+    recommendedContainer.innerHTML = '<p style="text-align: center; color: #b5b5b5;">No athletes found</p>';
+    otherContainer.innerHTML = '';
+    return;
+  }
+  
+  const athleteHTML = (athlete) => `
+    <div class="athlete-card">
+      <div class="athlete-header">
+        <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=${athlete.name}" 
+             class="athlete-avatar" alt="${athlete.name}">
+        <div class="athlete-info">
+          <h3>${athlete.name}</h3>
+          <div class="athlete-sport">
+            <span>⚡</span>
+            <span>${athlete.sports.length > 0 ? athlete.sports.join(', ') : 'Athlete'}</span>
+          </div>
+        </div>
+      </div>
+      ${athlete.bio ? `<p class="athlete-bio">${athlete.bio}</p>` : ''}
+      <div class="athlete-stats">
+        <div class="athlete-stat">
+          <p>Workouts</p>
+          <p>${athlete.workoutsCount}</p>
+        </div>
+        <div class="athlete-stat">
+          <p>Followers</p>
+          <p>${athlete.followersCount}</p>
+        </div>
+      </div>
+      <button class="btn-${athlete.isFollowing ? 'secondary' : 'primary'} full-width" 
+              onclick="toggleFollow(${athlete.id})">
+        ${athlete.isFollowing ? '✓ Following' : '+ Follow'}
+      </button>
+    </div>
+  `;
+  
+  recommendedContainer.innerHTML = allAthletes.slice(0, 3).map(athleteHTML).join('');
+  otherContainer.innerHTML = allAthletes.slice(3).map(athleteHTML).join('');
+}
+
+async function toggleFollow(userId) {
+  try {
+    const result = await api.users.follow(userId);
+    const athlete = allAthletes.find(a => a.id === userId);
+    if (athlete) {
+      athlete.isFollowing = result.following;
+      if (result.following) {
+        athlete.followersCount++;
+      } else {
+        athlete.followersCount--;
+      }
+      renderAthletes();
+    }
+  } catch (e) {
+    console.error('Failed to toggle follow:', e);
+    alert('Failed to follow/unfollow user');
+  }
 }
 
 document.addEventListener('DOMContentLoaded', initializeApp);

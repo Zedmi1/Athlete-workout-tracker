@@ -39,6 +39,13 @@ CREATE TABLE IF NOT EXISTS workout_likes (
   PRIMARY KEY (user_id, workout_id)
 );
 
+CREATE TABLE IF NOT EXISTS follows (
+  follower_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  following_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (follower_id, following_id)
+);
+
 INSERT INTO sports (name) VALUES 
   ('Football'),
   ('Basketball'),

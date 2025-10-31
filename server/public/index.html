@@ -126,6 +126,9 @@
                                 </div>
                             </div>
                         </div>
+                        <button class="btn-secondary full-width" onclick="navigateTo('search')" style="margin-top: 16px;">
+                            🔍 Find Athletes
+                        </button>
                     </div>
                 </div>
             </div>
@@ -231,7 +234,6 @@
 
                 <div class="page-header">
                     <h2>Personal Records</h2>
-                    <button class="btn-secondary">View All</button>
                 </div>
 
                 <div class="records-grid" id="personal-records"></div>
@@ -247,10 +249,13 @@
                             <div class="profile-header">
                                 <img id="profile-avatar" class="profile-avatar" alt="Profile">
                                 <h1 id="profile-name">Athlete</h1>
+                                <div id="profile-sport-selector-container" style="display: none; margin: 12px 0;">
+                                    <label style="display: block; margin-bottom: 8px; color: #b5b5b5; font-size: 14px;">Sport Interests</label>
+                                    <div id="profile-sports-checkboxes" class="sports-checkbox-group"></div>
+                                </div>
                                 <p id="profile-sport" class="profile-sport">Football Athlete</p>
+                                <p id="profile-bio" class="profile-bio">Passionate athlete dedicated to pushing limits and achieving new personal records every day.</p>
                             </div>
-
-                            <p id="profile-bio" class="profile-bio">Passionate athlete dedicated to pushing limits and achieving new personal records every day.</p>
 
                             <div class="profile-tabs">
                                 <button class="tab-btn active" onclick="switchProfileTab('info')">👤 Info</button>
@@ -293,9 +298,6 @@
                         </div>
 
                         <div class="action-buttons">
-                            <button class="btn-secondary full-width" onclick="navigateTo('search')">
-                                🔍 Find Athletes
-                            </button>
                             <button class="btn-danger full-width" onclick="handleLogout()">
                                 🚪 Logout
                             </button>
