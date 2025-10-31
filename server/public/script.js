@@ -59,6 +59,7 @@ const api = {
   },
   workouts: {
     create: (data) => request('/api/workouts', { method: 'POST', body: JSON.stringify(data) }),
+    createSession: (data) => request('/api/workout-sessions', { method: 'POST', body: JSON.stringify(data) }),
     update: (id, data) => request(`/api/workouts/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     mine: () => request('/api/workouts/mine'),
     feed: () => request('/api/workouts/feed'),
@@ -352,6 +353,8 @@ function toggleWorkoutForm() {
     currentSessionExercises = [];
     updateSessionExercisesList();
     form.querySelector('h2').textContent = 'New Workout';
+    document.getElementById('personal-record-toggle').disabled = false;
+    document.getElementById('personal-record-toggle').checked = false;
   }
   
   form.style.display = isVisible ? 'none' : 'block';
@@ -380,6 +383,8 @@ function addExerciseToSession(event) {
   document.getElementById('workout-distance').value = '';
   document.getElementById('workout-duration').value = '';
   document.getElementById('workout-notes').value = '';
+  document.getElementById('personal-record-toggle').checked = false;
+  document.getElementById('personal-record-toggle').disabled = true;
   
   document.getElementById('exercise-name').focus();
 }
@@ -387,6 +392,10 @@ function addExerciseToSession(event) {
 function removeExerciseFromSession(index) {
   currentSessionExercises.splice(index, 1);
   updateSessionExercisesList();
+  
+  if (currentSessionExercises.length === 0) {
+    document.getElementById('personal-record-toggle').disabled = false;
+  }
 }
 
 function updateSessionExercisesList() {
@@ -431,12 +440,12 @@ async function saveAllExercises() {
   const workoutDate = document.getElementById('workout-date').value || null;
   
   try {
-    const promises = currentSessionExercises.map(exercise => 
-      api.workouts.create({ ...exercise, workoutDate })
-    );
+    const session = await api.workouts.createSession({
+      exercises: currentSessionExercises,
+      workoutDate
+    });
     
-    const savedWorkouts = await Promise.all(promises);
-    savedWorkouts.forEach(workout => userWorkouts.unshift(workout));
+    userWorkouts.unshift(session);
     
     currentSessionExercises = [];
     updateSessionExercisesList();
@@ -446,7 +455,7 @@ async function saveAllExercises() {
     updateWeeklyProgress();
     
     await loadActivityFeed();
-    alert(`Successfully saved ${savedWorkouts.length} exercise${savedWorkouts.length > 1 ? 's' : ''}!`);
+    alert(`Successfully saved ${session.exercises.length} exercise${session.exercises.length > 1 ? 's' : ''}!`);
   } catch (e) {
     alert('Failed to save exercises: ' + e.message);
   }
@@ -463,10 +472,11 @@ async function saveWorkout(event) {
   const duration = document.getElementById('workout-duration').value || null;
   const notes = document.getElementById('workout-notes').value || null;
   const workoutDate = document.getElementById('workout-date').value || null;
+  const isPersonalRecord = document.getElementById('personal-record-toggle').checked;
   
   if (!exercise) {
     if (currentSessionExercises.length > 0) {
-      saveAllExercises();
+      await saveAllExercises();
     } else {
       alert('Please enter an exercise name.');
     }
@@ -476,7 +486,7 @@ async function saveWorkout(event) {
   try {
     if (editingWorkoutId) {
       const updatedWorkout = await api.workouts.update(editingWorkoutId, {
-        exercise, sport, sets, reps, distance, duration, notes, workoutDate
+        exercise, sport, sets, reps, distance, duration, notes, workoutDate, isPersonalRecord
       });
       
       const index = userWorkouts.findIndex(w => w.id == editingWorkoutId);
@@ -486,24 +496,36 @@ async function saveWorkout(event) {
       editingWorkoutId = null;
       
       document.getElementById('workout-form').querySelector('form').reset();
+      document.getElementById('personal-record-toggle').disabled = false;
       toggleWorkoutForm();
       renderWorkouts();
+      renderPersonalRecords();
       updateWeeklyProgress();
       await loadActivityFeed();
       await initializeCharts();
     } else {
       if (currentSessionExercises.length > 0) {
-        addExerciseToSession(new Event('submit'));
+        currentSessionExercises.push({
+          exercise,
+          sport,
+          sets,
+          reps,
+          distance,
+          duration,
+          notes
+        });
         await saveAllExercises();
       } else {
         const newWorkout = await api.workouts.create({
-          exercise, sport, sets, reps, distance, duration, notes, workoutDate
+          exercise, sport, sets, reps, distance, duration, notes, workoutDate, isPersonalRecord
         });
         
         userWorkouts.unshift(newWorkout);
         document.getElementById('workout-form').querySelector('form').reset();
+        document.getElementById('personal-record-toggle').disabled = false;
         toggleWorkoutForm();
         renderWorkouts();
+        renderPersonalRecords();
         updateWeeklyProgress();
         await loadActivityFeed();
       }
@@ -537,6 +559,7 @@ function editWorkout(workoutId) {
   document.getElementById('workout-duration').value = workout.duration !== '-' ? workout.duration : '';
   document.getElementById('workout-notes').value = workout.notes || '';
   document.getElementById('workout-date').value = '';
+  document.getElementById('personal-record-toggle').checked = workout.isPersonalRecord || false;
   
   const form = document.getElementById('workout-form');
   form.style.display = 'block';
@@ -573,61 +596,153 @@ function renderWorkouts() {
   
   container.innerHTML = '';
   
-  userWorkouts.forEach(workout => {
+  userWorkouts.forEach((item, itemIndex) => {
     const workoutItem = document.createElement('div');
     workoutItem.className = 'workout-item';
     
-    const statsHTML = [];
-    if (workout.sets && workout.sets !== '-') {
-      statsHTML.push(`<div class="workout-stat"><p>Sets</p><p>${workout.sets}</p></div>`);
-    }
-    if (workout.reps && workout.reps !== '-') {
-      statsHTML.push(`<div class="workout-stat"><p>Reps</p><p>${workout.reps}</p></div>`);
-    }
-    if (workout.distance && workout.distance !== '-') {
-      statsHTML.push(`<div class="workout-stat"><p>Distance</p><p>${workout.distance}</p></div>`);
-    }
-    if (workout.duration && workout.duration !== '-') {
-      statsHTML.push(`<div class="workout-stat"><p>Duration</p><p>${workout.duration}</p></div>`);
-    }
-    
-    workoutItem.innerHTML = `
-      <div class="workout-header">
-        <div class="workout-title-section">
-          <div class="workout-title-row">
-            <h3>${workout.exercise}</h3>
-            <span class="sport-badge">${workout.sport}</span>
-          </div>
-          <div class="workout-meta">
-            <span>📅 ${workout.date}</span>
-            <span>🕐 ${workout.time}</span>
+    if (item.sessionId && item.exercises) {
+      const carouselId = `carousel-${item.sessionId}`;
+      const exercises = item.exercises;
+      
+      workoutItem.innerHTML = `
+        <div class="workout-header">
+          <div class="workout-title-section">
+            <div class="workout-title-row">
+              <h3>Workout Session</h3>
+              <span class="session-badge">${exercises.length} Exercise${exercises.length > 1 ? 's' : ''}</span>
+            </div>
+            <div class="workout-meta">
+              <span>📅 ${item.date}</span>
+              <span>🕐 ${item.time}</span>
+            </div>
           </div>
         </div>
-      </div>
-      <div class="workout-stats">
-        ${statsHTML.join('')}
-      </div>
-      ${workout.notes ? `
-        <div class="workout-notes">
-          <p>Notes</p>
-          <p>${workout.notes}</p>
+        <div class="carousel-container" id="${carouselId}">
+          ${exercises.map((exercise, index) => {
+            const statsHTML = [];
+            if (exercise.sets && exercise.sets !== '-') {
+              statsHTML.push(`<div class="workout-stat"><p>Sets</p><p>${exercise.sets}</p></div>`);
+            }
+            if (exercise.reps && exercise.reps !== '-') {
+              statsHTML.push(`<div class="workout-stat"><p>Reps</p><p>${exercise.reps}</p></div>`);
+            }
+            if (exercise.distance && exercise.distance !== '-') {
+              statsHTML.push(`<div class="workout-stat"><p>Distance</p><p>${exercise.distance}</p></div>`);
+            }
+            if (exercise.duration && exercise.duration !== '-') {
+              statsHTML.push(`<div class="workout-stat"><p>Duration</p><p>${exercise.duration}</p></div>`);
+            }
+            
+            return `
+              <div class="carousel-slide ${index === 0 ? 'active' : ''}" data-slide="${index}">
+                <div class="exercise-info">
+                  <div class="exercise-title-row">
+                    <h4>${exercise.exercise}</h4>
+                    <span class="sport-badge">${exercise.sport}</span>
+                  </div>
+                  <div class="workout-stats">
+                    ${statsHTML.join('')}
+                  </div>
+                  ${exercise.notes ? `
+                    <div class="workout-notes">
+                      <p>Notes</p>
+                      <p>${exercise.notes}</p>
+                    </div>
+                  ` : ''}
+                </div>
+              </div>
+            `;
+          }).join('')}
         </div>
-      ` : ''}
-      <div class="feed-actions">
-        <button class="like-btn ${workout.liked ? 'liked' : ''}" onclick="toggleLike('${workout.id}', 'workout')">
-          ${workout.liked ? '❤️' : '🤍'} ${workout.likes}
-        </button>
-        <button class="edit-btn" onclick="editWorkout('${workout.id}')" title="Edit workout">
-          ✏️ Edit
-        </button>
-        <button class="delete-btn" onclick="deleteWorkout('${workout.id}')" title="Delete workout">
-          🗑️ Delete
-        </button>
-      </div>
-    `;
+        ${exercises.length > 1 ? `
+          <div class="carousel-controls">
+            <button class="carousel-btn prev" onclick="changeSlide('${carouselId}', -1)">‹</button>
+            <span class="carousel-indicator">
+              <span class="current-slide">1</span> / ${exercises.length}
+            </span>
+            <button class="carousel-btn next" onclick="changeSlide('${carouselId}', 1)">›</button>
+          </div>
+        ` : ''}
+        <div class="feed-actions">
+          <button class="like-btn" onclick="alert('Coming soon!')">
+            🤍 0
+          </button>
+        </div>
+      `;
+    } else {
+      const statsHTML = [];
+      if (item.sets && item.sets !== '-') {
+        statsHTML.push(`<div class="workout-stat"><p>Sets</p><p>${item.sets}</p></div>`);
+      }
+      if (item.reps && item.reps !== '-') {
+        statsHTML.push(`<div class="workout-stat"><p>Reps</p><p>${item.reps}</p></div>`);
+      }
+      if (item.distance && item.distance !== '-') {
+        statsHTML.push(`<div class="workout-stat"><p>Distance</p><p>${item.distance}</p></div>`);
+      }
+      if (item.duration && item.duration !== '-') {
+        statsHTML.push(`<div class="workout-stat"><p>Duration</p><p>${item.duration}</p></div>`);
+      }
+      
+      workoutItem.innerHTML = `
+        <div class="workout-header">
+          <div class="workout-title-section">
+            <div class="workout-title-row">
+              <h3>${item.exercise}</h3>
+              <span class="sport-badge">${item.sport}</span>
+            </div>
+            <div class="workout-meta">
+              <span>📅 ${item.date}</span>
+              <span>🕐 ${item.time}</span>
+            </div>
+          </div>
+        </div>
+        <div class="workout-stats">
+          ${statsHTML.join('')}
+        </div>
+        ${item.notes ? `
+          <div class="workout-notes">
+            <p>Notes</p>
+            <p>${item.notes}</p>
+          </div>
+        ` : ''}
+        <div class="feed-actions">
+          <button class="like-btn ${item.liked ? 'liked' : ''}" onclick="toggleLike('${item.id}', 'workout')">
+            ${item.liked ? '❤️' : '🤍'} ${item.likes}
+          </button>
+          <button class="edit-btn" onclick="editWorkout('${item.id}')" title="Edit workout">
+            ✏️ Edit
+          </button>
+          <button class="delete-btn" onclick="deleteWorkout('${item.id}')" title="Delete workout">
+            🗑️ Delete
+          </button>
+        </div>
+      `;
+    }
     
     container.appendChild(workoutItem);
   });
+}
+
+function changeSlide(carouselId, direction) {
+  const carousel = document.getElementById(carouselId);
+  if (!carousel) return;
+  
+  const slides = carousel.querySelectorAll('.carousel-slide');
+  let currentIndex = Array.from(slides).findIndex(slide => slide.classList.contains('active'));
+  
+  slides[currentIndex].classList.remove('active');
+  
+  currentIndex += direction;
+  if (currentIndex >= slides.length) currentIndex = 0;
+  if (currentIndex < 0) currentIndex = slides.length - 1;
+  
+  slides[currentIndex].classList.add('active');
+  
+  const indicator = carousel.parentElement.querySelector('.current-slide');
+  if (indicator) {
+    indicator.textContent = currentIndex + 1;
+  }
 }
 
 function setProgressPeriod(period) {
@@ -853,28 +968,243 @@ function renderPersonalRecords() {
   if (!container) return;
   
   const records = userWorkouts
-    .filter(w => w.distance && w.distance !== '-')
-    .sort((a, b) => {
-      const aVal = parseFloat(a.distance);
-      const bVal = parseFloat(b.distance);
-      return bVal - aVal;
-    })
-    .slice(0, 4);
+    .filter(w => !w.sessionId && w.isPersonalRecord)
+    .sort((a, b) => new Date(b.workout_date || b.date) - new Date(a.workout_date || a.date));
   
   if (records.length === 0) {
-    container.innerHTML = '<div class="card"><p>No personal records yet. Keep training!</p></div>';
+    container.innerHTML = '<div class="card"><p>No personal records yet. When logging a workout, toggle "New Personal Record" to mark your achievements!</p></div>';
     return;
   }
   
   container.innerHTML = records.map(record => `
-    <div class="record-card">
+    <div class="record-card" onclick="viewRecordDetail(${record.id})" style="cursor: pointer; transition: transform 0.2s;">
       <div class="record-icon">🏆</div>
       <div class="record-info">
         <h3>${record.exercise}</h3>
-        <p>${record.distance} • ${record.date}</p>
+        <p>${record.date}</p>
       </div>
     </div>
   `).join('');
+}
+
+let recordDetailCharts = {
+  chart1: null,
+  chart2: null
+};
+
+async function viewRecordDetail(workoutId) {
+  const workout = userWorkouts.find(w => w.id == workoutId);
+  if (!workout) return;
+  
+  navigateTo('record-detail');
+  
+  document.getElementById('record-detail-title').textContent = workout.exercise;
+  document.getElementById('record-detail-date').textContent = `Personal Record Achieved: ${workout.date}`;
+  
+  const statsHTML = [];
+  if (workout.sets && workout.sets !== '-') {
+    statsHTML.push(`<div class="workout-stat"><p>Sets</p><p>${workout.sets}</p></div>`);
+  }
+  if (workout.reps && workout.reps !== '-') {
+    statsHTML.push(`<div class="workout-stat"><p>Reps</p><p>${workout.reps}</p></div>`);
+  }
+  if (workout.distance && workout.distance !== '-') {
+    statsHTML.push(`<div class="workout-stat"><p>Distance</p><p>${workout.distance}</p></div>`);
+  }
+  if (workout.duration && workout.duration !== '-') {
+    statsHTML.push(`<div class="workout-stat"><p>Duration</p><p>${workout.duration}</p></div>`);
+  }
+  
+  document.getElementById('record-detail-stats').innerHTML = statsHTML.join('');
+  
+  if (workout.notes) {
+    document.getElementById('record-detail-notes').innerHTML = `
+      <div class="workout-notes" style="margin-top: 16px;">
+        <p>Notes</p>
+        <p>${workout.notes}</p>
+      </div>
+    `;
+  } else {
+    document.getElementById('record-detail-notes').innerHTML = '';
+  }
+  
+  await renderRecordCharts(workout);
+}
+
+async function renderRecordCharts(workout) {
+  const exerciseHistory = userWorkouts
+    .filter(w => !w.sessionId && w.exercise === workout.exercise)
+    .sort((a, b) => new Date(a.workout_date || a.date) - new Date(b.workout_date || b.date));
+  
+  if (exerciseHistory.length === 0) return;
+  
+  if (recordDetailCharts.chart1) recordDetailCharts.chart1.destroy();
+  if (recordDetailCharts.chart2) recordDetailCharts.chart2.destroy();
+  
+  const hasDistance = exerciseHistory.some(w => w.distance && w.distance !== '-');
+  const hasDuration = exerciseHistory.some(w => w.duration && w.duration !== '-');
+  const hasSets = exerciseHistory.some(w => w.sets && w.sets !== '-');
+  const hasReps = exerciseHistory.some(w => w.reps && w.reps !== '-');
+  
+  const labels = exerciseHistory.map(w => w.date);
+  
+  if (hasDistance) {
+    const distanceData = exerciseHistory.map(w => {
+      if (!w.distance || w.distance === '-') return null;
+      return parseFloat(w.distance);
+    });
+    
+    document.getElementById('record-chart-1-title').textContent = 'Distance Over Time';
+    const ctx1 = document.getElementById('record-chart-1').getContext('2d');
+    recordDetailCharts.chart1 = new Chart(ctx1, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          label: 'Distance',
+          data: distanceData,
+          borderColor: '#00ff88',
+          backgroundColor: 'rgba(0, 255, 136, 0.1)',
+          tension: 0.4,
+          fill: true
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        scales: {
+          y: {
+            beginAtZero: true,
+            grid: { color: '#2a2a2a' },
+            ticks: { color: '#b5b5b5' }
+          },
+          x: {
+            grid: { color: '#2a2a2a' },
+            ticks: { color: '#b5b5b5' }
+          }
+        },
+        plugins: {
+          legend: { labels: { color: '#b5b5b5' } }
+        }
+      }
+    });
+  } else if (hasDuration) {
+    const durationData = exerciseHistory.map(w => {
+      if (!w.duration || w.duration === '-') return null;
+      return parseFloat(w.duration);
+    });
+    
+    document.getElementById('record-chart-1-title').textContent = 'Duration Over Time';
+    const ctx1 = document.getElementById('record-chart-1').getContext('2d');
+    recordDetailCharts.chart1 = new Chart(ctx1, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          label: 'Duration (min)',
+          data: durationData,
+          borderColor: '#00ff88',
+          backgroundColor: 'rgba(0, 255, 136, 0.1)',
+          tension: 0.4,
+          fill: true
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        scales: {
+          y: {
+            beginAtZero: true,
+            grid: { color: '#2a2a2a' },
+            ticks: { color: '#b5b5b5' }
+          },
+          x: {
+            grid: { color: '#2a2a2a' },
+            ticks: { color: '#b5b5b5' }
+          }
+        },
+        plugins: {
+          legend: { labels: { color: '#b5b5b5' } }
+        }
+      }
+    });
+  }
+  
+  if (hasSets && hasReps) {
+    const volumeData = exerciseHistory.map(w => {
+      const sets = parseFloat(w.sets) || 0;
+      const reps = parseFloat(w.reps) || 0;
+      return sets * reps;
+    });
+    
+    document.getElementById('record-chart-2-title').textContent = 'Total Volume (Sets × Reps)';
+    const ctx2 = document.getElementById('record-chart-2').getContext('2d');
+    recordDetailCharts.chart2 = new Chart(ctx2, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          label: 'Volume',
+          data: volumeData,
+          backgroundColor: '#00ccff',
+          borderRadius: 8
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        scales: {
+          y: {
+            beginAtZero: true,
+            grid: { color: '#2a2a2a' },
+            ticks: { color: '#b5b5b5' }
+          },
+          x: {
+            grid: { color: '#2a2a2a' },
+            ticks: { color: '#b5b5b5' }
+          }
+        },
+        plugins: {
+          legend: { labels: { color: '#b5b5b5' } }
+        }
+      }
+    });
+  } else if (hasSets) {
+    const setsData = exerciseHistory.map(w => parseFloat(w.sets) || 0);
+    
+    document.getElementById('record-chart-2-title').textContent = 'Sets Over Time';
+    const ctx2 = document.getElementById('record-chart-2').getContext('2d');
+    recordDetailCharts.chart2 = new Chart(ctx2, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          label: 'Sets',
+          data: setsData,
+          backgroundColor: '#00ccff',
+          borderRadius: 8
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        scales: {
+          y: {
+            beginAtZero: true,
+            grid: { color: '#2a2a2a' },
+            ticks: { color: '#b5b5b5', stepSize: 1 }
+          },
+          x: {
+            grid: { color: '#2a2a2a' },
+            ticks: { color: '#b5b5b5' }
+          }
+        },
+        plugins: {
+          legend: { labels: { color: '#b5b5b5' } }
+        }
+      }
+    });
+  }
 }
 
 async function renderProfile() {
@@ -900,7 +1230,7 @@ async function renderProfile() {
   
   setSelectedSports(currentUser.sports || []);
   
-  const recentWorkouts = userWorkouts.slice(0, 5);
+  const recentWorkouts = userWorkouts.slice(0, 3);
   const recentContainer = document.getElementById('profile-recent-workouts');
   if (recentContainer) {
     if (recentWorkouts.length === 0) {

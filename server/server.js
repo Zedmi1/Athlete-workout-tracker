@@ -314,7 +314,7 @@ app.post("/api/workouts", async (req, res) => {
     return res.status(401).json({ error: "Not authenticated" });
   }
 
-  const { exercise, sport, sets, reps, distance, duration, notes, workoutDate } = req.body;
+  const { exercise, sport, sets, reps, distance, duration, notes, workoutDate, isPersonalRecord } = req.body;
 
   if (!exercise || !sport) {
     return res.status(400).json({ error: "Exercise and sport are required" });
@@ -330,9 +330,9 @@ app.post("/api/workouts", async (req, res) => {
     const workoutTimestamp = workoutDate ? new Date(workoutDate) : new Date();
 
     const result = await db.query(
-      `INSERT INTO workouts (user_id, exercise, sport_id, sets, reps, distance, duration, notes, workout_date)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-       RETURNING id, exercise, sets, reps, distance, duration, notes, workout_date`,
+      `INSERT INTO workouts (user_id, exercise, sport_id, sets, reps, distance, duration, notes, workout_date, is_personal_record)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       RETURNING id, exercise, sets, reps, distance, duration, notes, workout_date, is_personal_record`,
       [
         userId,
         exercise,
@@ -343,6 +343,7 @@ app.post("/api/workouts", async (req, res) => {
         duration || null,
         notes || null,
         workoutTimestamp,
+        isPersonalRecord || false,
       ],
     );
 
@@ -356,6 +357,7 @@ app.post("/api/workouts", async (req, res) => {
       distance: workout.distance,
       duration: workout.duration,
       notes: workout.notes,
+      isPersonalRecord: workout.is_personal_record,
       date: new Date(workout.workout_date).toLocaleDateString("en-US", {
         month: "short",
         day: "numeric",
@@ -371,6 +373,92 @@ app.post("/api/workouts", async (req, res) => {
   } catch (e) {
     console.error("Create workout error:", e);
     res.status(500).json({ error: "Failed to create workout" });
+  }
+});
+
+app.post("/api/workout-sessions", async (req, res) => {
+  const sessionId = req.headers["x-session-id"];
+  const userId = sessions.get(sessionId);
+
+  if (!userId) {
+    return res.status(401).json({ error: "Not authenticated" });
+  }
+
+  const { exercises, workoutDate } = req.body;
+
+  if (!exercises || !Array.isArray(exercises) || exercises.length === 0) {
+    return res.status(400).json({ error: "At least one exercise is required" });
+  }
+
+  try {
+    const workoutTimestamp = workoutDate ? new Date(workoutDate) : new Date();
+
+    const sessionResult = await db.query(
+      `INSERT INTO workout_sessions (user_id, workout_date)
+       VALUES ($1, $2)
+       RETURNING id`,
+      [userId, workoutTimestamp]
+    );
+
+    const workoutSessionId = sessionResult.rows[0].id;
+    const savedWorkouts = [];
+
+    for (const exercise of exercises) {
+      const sportResult = await db.query(
+        "SELECT id FROM sports WHERE name = $1",
+        [exercise.sport]
+      );
+      const sportId = sportResult.rows.length > 0 ? sportResult.rows[0].id : null;
+
+      const result = await db.query(
+        `INSERT INTO workouts (user_id, session_id, exercise, sport_id, sets, reps, distance, duration, notes, workout_date)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         RETURNING id, exercise, sets, reps, distance, duration, notes, workout_date`,
+        [
+          userId,
+          workoutSessionId,
+          exercise.exercise,
+          sportId,
+          exercise.sets || null,
+          exercise.reps || null,
+          exercise.distance || null,
+          exercise.duration || null,
+          exercise.notes || null,
+          workoutTimestamp,
+        ]
+      );
+
+      const workout = result.rows[0];
+      savedWorkouts.push({
+        id: workout.id,
+        exercise: workout.exercise,
+        sport: exercise.sport,
+        sets: workout.sets,
+        reps: workout.reps,
+        distance: workout.distance,
+        duration: workout.duration,
+        notes: workout.notes,
+      });
+    }
+
+    res.status(201).json({
+      sessionId: workoutSessionId,
+      exercises: savedWorkouts,
+      date: new Date(workoutTimestamp).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      }),
+      time: new Date(workoutTimestamp).toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+      likes: 0,
+      liked: false,
+    });
+  } catch (e) {
+    console.error("Create workout session error:", e);
+    res.status(500).json({ error: "Failed to create workout session" });
   }
 });
 
@@ -525,39 +613,76 @@ app.get("/api/workouts/mine", async (req, res) => {
 
   try {
     const result = await db.query(
-      `SELECT w.id, w.exercise, s.name as sport, w.sets, w.reps, w.distance, w.duration, 
-              w.notes, w.likes, w.workout_date,
+      `SELECT w.id, w.session_id, w.exercise, s.name as sport, w.sets, w.reps, w.distance, w.duration, 
+              w.notes, w.likes, w.workout_date, w.is_personal_record,
               (SELECT COUNT(*) FROM workout_likes WHERE workout_id = w.id AND user_id = $1) as user_liked
        FROM workouts w
        LEFT JOIN sports s ON w.sport_id = s.id
        WHERE w.user_id = $1
-       ORDER BY w.workout_date DESC`,
+       ORDER BY w.workout_date DESC, w.session_id DESC NULLS LAST, w.id ASC`,
       [userId],
     );
 
-    const workouts = result.rows.map((w) => ({
-      id: w.id,
-      exercise: w.exercise,
-      sport: w.sport,
-      sets: w.sets || "-",
-      reps: w.reps || "-",
-      distance: w.distance || "-",
-      duration: w.duration || "-",
-      notes: w.notes,
-      date: new Date(w.workout_date).toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      }),
-      time: new Date(w.workout_date).toLocaleTimeString("en-US", {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
-      likes: w.likes,
-      liked: w.user_liked > 0,
-    }));
+    const sessionMap = new Map();
+    const standaloneWorkouts = [];
 
-    res.json(workouts);
+    result.rows.forEach((w) => {
+      const workoutData = {
+        id: w.id,
+        exercise: w.exercise,
+        sport: w.sport,
+        sets: w.sets || "-",
+        reps: w.reps || "-",
+        distance: w.distance || "-",
+        duration: w.duration || "-",
+        notes: w.notes,
+        likes: w.likes,
+        liked: w.user_liked > 0,
+        isPersonalRecord: w.is_personal_record,
+      };
+
+      if (w.session_id) {
+        if (!sessionMap.has(w.session_id)) {
+          sessionMap.set(w.session_id, {
+            sessionId: w.session_id,
+            exercises: [],
+            date: new Date(w.workout_date).toLocaleDateString("en-US", {
+              month: "short",
+              day: "numeric",
+              year: "numeric",
+            }),
+            time: new Date(w.workout_date).toLocaleTimeString("en-US", {
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
+            workout_date: w.workout_date,
+          });
+        }
+        sessionMap.get(w.session_id).exercises.push(workoutData);
+      } else {
+        standaloneWorkouts.push({
+          ...workoutData,
+          date: new Date(w.workout_date).toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          }),
+          time: new Date(w.workout_date).toLocaleTimeString("en-US", {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+        });
+      }
+    });
+
+    const sessions = Array.from(sessionMap.values());
+    const allWorkouts = [...sessions, ...standaloneWorkouts].sort((a, b) => {
+      const dateA = a.workout_date || a.exercises?.[0]?.workout_date || new Date(0);
+      const dateB = b.workout_date || b.exercises?.[0]?.workout_date || new Date(0);
+      return new Date(dateB) - new Date(dateA);
+    });
+
+    res.json(allWorkouts);
   } catch (e) {
     console.error("Get workouts error:", e);
     res.status(500).json({ error: "Failed to get workouts" });

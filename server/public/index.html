@@ -221,6 +221,16 @@
                             <label>Notes</label>
                             <textarea id="workout-notes" rows="3" placeholder="How did it go?"></textarea>
                         </div>
+                        <div class="form-group" style="background: linear-gradient(135deg, rgba(0, 255, 136, 0.1), rgba(0, 204, 111, 0.1)); padding: 16px; border-radius: 8px; border: 1px solid rgba(0, 255, 136, 0.2);">
+                            <label class="toggle-label">
+                                <input type="checkbox" id="personal-record-toggle" class="toggle-checkbox">
+                                <span class="toggle-slider"></span>
+                                <span class="toggle-text">
+                                    🏆 <strong>New Personal Record</strong>
+                                    <small style="display: block; margin-top: 4px; color: #b5b5b5; font-weight: normal;">Mark this exercise as a personal achievement</small>
+                                </span>
+                            </label>
+                        </div>
                         <div style="display: flex; gap: 12px;">
                             <button type="submit" class="btn-secondary" style="flex: 1;">+ Add Exercise</button>
                             <button type="button" class="btn-primary" onclick="saveWorkout(event)" style="flex: 1;">Save Workout</button>
@@ -271,6 +281,41 @@
 
                 <div class="records-grid" id="personal-records"></div>
 
+            </div>
+        </div>
+
+        <div id="record-detail-screen" class="page-content">
+            <div class="container">
+                <button class="btn-secondary" onclick="navigateTo('progress')" style="margin-bottom: 24px;">
+                    ← Back to Progress
+                </button>
+                
+                <div class="card" style="background: linear-gradient(135deg, rgba(0, 255, 136, 0.1), rgba(0, 204, 111, 0.05)); border: 2px solid rgba(0, 255, 136, 0.3);">
+                    <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 24px;">
+                        <div style="font-size: 48px;">🏆</div>
+                        <div>
+                            <h1 id="record-detail-title" style="margin-bottom: 8px;">Exercise Name</h1>
+                            <p id="record-detail-date" style="color: #00ff88; font-size: 18px;">Date Achieved</p>
+                        </div>
+                    </div>
+                    
+                    <div id="record-detail-stats" class="workout-stats"></div>
+                    
+                    <div id="record-detail-notes"></div>
+                </div>
+
+                <h2 style="margin-top: 40px; margin-bottom: 24px;">Your Progress</h2>
+                
+                <div class="charts-grid">
+                    <div class="card">
+                        <h3 id="record-chart-1-title">Performance Over Time</h3>
+                        <canvas id="record-chart-1"></canvas>
+                    </div>
+                    <div class="card">
+                        <h3 id="record-chart-2-title">Volume Trends</h3>
+                        <canvas id="record-chart-2"></canvas>
+                    </div>
+                </div>
             </div>
         </div>
 
