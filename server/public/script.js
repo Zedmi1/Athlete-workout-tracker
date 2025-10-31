@@ -106,6 +106,7 @@ async function initializeApp() {
 function showLogin() {
   document.getElementById('login-screen').classList.add('active');
   document.getElementById('app-container').classList.remove('active');
+  switchTab('login');
 }
 
 function showApp() {
