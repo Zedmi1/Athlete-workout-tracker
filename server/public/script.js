@@ -4,6 +4,8 @@ let availableSports = [];
 let activityFeed = [];
 let userWorkouts = [];
 let isEditMode = false;
+let editingWorkoutId = null;
+let currentSessionExercises = [];
 let progressPeriod = 'month';
 let charts = {};
 
@@ -56,6 +58,7 @@ const api = {
   },
   workouts: {
     create: (data) => request('/api/workouts', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id, data) => request(`/api/workouts/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     mine: () => request('/api/workouts/mine'),
     feed: () => request('/api/workouts/feed'),
     like: (id) => request(`/api/workouts/${id}/like`, { method: 'POST' }),
@@ -280,6 +283,7 @@ function renderActivityFeed() {
       <div class="feed-content">
         <h4>${item.workout}</h4>
         <p>${item.stats}</p>
+        ${item.notes ? `<p style="color: #b5b5b5; font-style: italic; margin-top: 8px;">"${item.notes}"</p>` : ''}
       </div>
       <div class="feed-actions">
         <button class="like-btn ${item.liked ? 'liked' : ''}" onclick="toggleLike('${item.id}', 'feed')">
@@ -319,12 +323,113 @@ function toggleWorkoutForm() {
   const form = document.getElementById('workout-form');
   const isVisible = form.style.display !== 'none';
   
+  if (isVisible) {
+    editingWorkoutId = null;
+    currentSessionExercises = [];
+    updateSessionExercisesList();
+    form.querySelector('h2').textContent = 'New Workout';
+  }
+  
   form.style.display = isVisible ? 'none' : 'block';
   document.getElementById('form-toggle-text').textContent = isVisible ? '+ Log Workout' : 'Cancel';
 }
 
-async function saveWorkout(event) {
+function addExerciseToSession(event) {
   event.preventDefault();
+  
+  const exercise = {
+    exercise: document.getElementById('exercise-name').value,
+    sport: document.getElementById('workout-sport').value,
+    sets: document.getElementById('workout-sets').value || null,
+    reps: document.getElementById('workout-reps').value || null,
+    distance: document.getElementById('workout-distance').value || null,
+    duration: document.getElementById('workout-duration').value || null,
+    notes: document.getElementById('workout-notes').value || null
+  };
+  
+  currentSessionExercises.push(exercise);
+  updateSessionExercisesList();
+  
+  document.getElementById('exercise-name').value = '';
+  document.getElementById('workout-sets').value = '';
+  document.getElementById('workout-reps').value = '';
+  document.getElementById('workout-distance').value = '';
+  document.getElementById('workout-duration').value = '';
+  document.getElementById('workout-notes').value = '';
+  
+  document.getElementById('exercise-name').focus();
+}
+
+function removeExerciseFromSession(index) {
+  currentSessionExercises.splice(index, 1);
+  updateSessionExercisesList();
+}
+
+function updateSessionExercisesList() {
+  const listContainer = document.getElementById('session-exercises-list');
+  const container = document.getElementById('session-exercises-container');
+  const countSpan = document.getElementById('session-exercise-count');
+  
+  if (currentSessionExercises.length === 0) {
+    listContainer.style.display = 'none';
+    return;
+  }
+  
+  listContainer.style.display = 'block';
+  countSpan.textContent = `${currentSessionExercises.length} exercise${currentSessionExercises.length > 1 ? 's' : ''}`;
+  
+  container.innerHTML = currentSessionExercises.map((ex, index) => {
+    const stats = [];
+    if (ex.sets) stats.push(`${ex.sets} sets`);
+    if (ex.reps) stats.push(`${ex.reps} reps`);
+    if (ex.distance) stats.push(ex.distance);
+    if (ex.duration) stats.push(ex.duration);
+    
+    return `
+      <div style="background: #1c1c1c; padding: 12px; border-radius: 6px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: start;">
+        <div style="flex: 1;">
+          <div style="font-weight: 600; margin-bottom: 4px;">${ex.exercise} <span style="background: #2a2a2a; padding: 2px 8px; border-radius: 4px; font-size: 12px; margin-left: 8px;">${ex.sport}</span></div>
+          ${stats.length > 0 ? `<div style="color: #b5b5b5; font-size: 14px;">${stats.join(' • ')}</div>` : ''}
+          ${ex.notes ? `<div style="color: #b5b5b5; font-size: 13px; font-style: italic; margin-top: 4px;">"${ex.notes}"</div>` : ''}
+        </div>
+        <button type="button" onclick="removeExerciseFromSession(${index})" style="background: none; border: none; color: #ff6b6b; cursor: pointer; font-size: 18px; padding: 0 8px;">×</button>
+      </div>
+    `;
+  }).join('');
+}
+
+async function saveAllExercises() {
+  if (currentSessionExercises.length === 0) {
+    alert('Please add at least one exercise first.');
+    return;
+  }
+  
+  const workoutDate = document.getElementById('workout-date').value || null;
+  
+  try {
+    const promises = currentSessionExercises.map(exercise => 
+      api.workouts.create({ ...exercise, workoutDate })
+    );
+    
+    const savedWorkouts = await Promise.all(promises);
+    savedWorkouts.forEach(workout => userWorkouts.unshift(workout));
+    
+    currentSessionExercises = [];
+    updateSessionExercisesList();
+    document.getElementById('workout-form').querySelector('form').reset();
+    toggleWorkoutForm();
+    renderWorkouts();
+    updateWeeklyProgress();
+    
+    await loadActivityFeed();
+    alert(`Successfully saved ${savedWorkouts.length} exercise${savedWorkouts.length > 1 ? 's' : ''}!`);
+  } catch (e) {
+    alert('Failed to save exercises: ' + e.message);
+  }
+}
+
+async function saveWorkout(event) {
+  if (event) event.preventDefault();
   
   const exercise = document.getElementById('exercise-name').value;
   const sport = document.getElementById('workout-sport').value;
@@ -333,19 +438,52 @@ async function saveWorkout(event) {
   const distance = document.getElementById('workout-distance').value || null;
   const duration = document.getElementById('workout-duration').value || null;
   const notes = document.getElementById('workout-notes').value || null;
+  const workoutDate = document.getElementById('workout-date').value || null;
+  
+  if (!exercise) {
+    if (currentSessionExercises.length > 0) {
+      saveAllExercises();
+    } else {
+      alert('Please enter an exercise name.');
+    }
+    return;
+  }
   
   try {
-    const newWorkout = await api.workouts.create({
-      exercise, sport, sets, reps, distance, duration, notes
-    });
-    
-    userWorkouts.unshift(newWorkout);
-    
-    event.target.reset();
-    toggleWorkoutForm();
-    renderWorkouts();
-    
-    await loadActivityFeed();
+    if (editingWorkoutId) {
+      const updatedWorkout = await api.workouts.update(editingWorkoutId, {
+        exercise, sport, sets, reps, distance, duration, notes, workoutDate
+      });
+      
+      const index = userWorkouts.findIndex(w => w.id == editingWorkoutId);
+      if (index !== -1) {
+        userWorkouts[index] = updatedWorkout;
+      }
+      editingWorkoutId = null;
+      
+      document.getElementById('workout-form').querySelector('form').reset();
+      toggleWorkoutForm();
+      renderWorkouts();
+      updateWeeklyProgress();
+      await loadActivityFeed();
+      await initializeCharts();
+    } else {
+      if (currentSessionExercises.length > 0) {
+        addExerciseToSession(new Event('submit'));
+        await saveAllExercises();
+      } else {
+        const newWorkout = await api.workouts.create({
+          exercise, sport, sets, reps, distance, duration, notes, workoutDate
+        });
+        
+        userWorkouts.unshift(newWorkout);
+        document.getElementById('workout-form').querySelector('form').reset();
+        toggleWorkoutForm();
+        renderWorkouts();
+        updateWeeklyProgress();
+        await loadActivityFeed();
+      }
+    }
   } catch (e) {
     alert('Failed to save workout: ' + e.message);
   }
@@ -359,6 +497,30 @@ async function loadUserWorkouts() {
     console.error('Failed to load workouts:', e);
     userWorkouts = [];
   }
+}
+
+function editWorkout(workoutId) {
+  const workout = userWorkouts.find(w => w.id == workoutId);
+  if (!workout) return;
+  
+  editingWorkoutId = workoutId;
+  
+  document.getElementById('exercise-name').value = workout.exercise;
+  document.getElementById('workout-sport').value = workout.sport;
+  document.getElementById('workout-sets').value = workout.sets !== '-' ? workout.sets : '';
+  document.getElementById('workout-reps').value = workout.reps !== '-' ? workout.reps : '';
+  document.getElementById('workout-distance').value = workout.distance !== '-' ? workout.distance : '';
+  document.getElementById('workout-duration').value = workout.duration !== '-' ? workout.duration : '';
+  document.getElementById('workout-notes').value = workout.notes || '';
+  document.getElementById('workout-date').value = '';
+  
+  const form = document.getElementById('workout-form');
+  form.style.display = 'block';
+  form.querySelector('h2').textContent = 'Edit Workout';
+  form.querySelector('button[type="submit"]').textContent = 'Update Workout';
+  document.getElementById('form-toggle-text').textContent = 'Cancel';
+  
+  window.scrollTo({ top: form.offsetTop - 20, behavior: 'smooth' });
 }
 
 async function deleteWorkout(workoutId) {
@@ -432,6 +594,9 @@ function renderWorkouts() {
         <button class="like-btn ${workout.liked ? 'liked' : ''}" onclick="toggleLike('${workout.id}', 'workout')">
           ${workout.liked ? '❤️' : '🤍'} ${workout.likes}
         </button>
+        <button class="btn-secondary" onclick="editWorkout('${workout.id}')" title="Edit workout" style="padding: 8px 16px; margin-right: 8px;">
+          ✏️ Edit
+        </button>
         <button class="delete-btn" onclick="deleteWorkout('${workout.id}')" title="Delete workout">
           🗑️ Delete
         </button>
@@ -465,9 +630,11 @@ async function initializeCharts() {
       const freqCard = document.getElementById('frequency-chart')?.parentElement;
       const sportCard = document.getElementById('sport-distribution-chart')?.parentElement;
       const durationCard = document.getElementById('duration-chart')?.parentElement;
+      const volumeCard = document.getElementById('volume-chart')?.parentElement;
       if (freqCard) freqCard.innerHTML = `<h2>Workout Frequency</h2>${emptyMessage}`;
       if (sportCard) sportCard.innerHTML = `<h2>Sport Distribution</h2>${emptyMessage}`;
-      if (durationCard) durationCard.innerHTML = `<h2>Average Workout Duration</h2>${emptyMessage}`;
+      if (durationCard) durationCard.innerHTML = `<h2>Average Workout Duration (minutes)</h2>${emptyMessage}`;
+      if (volumeCard) volumeCard.innerHTML = `<h2>Total Volume (Sets)</h2>${emptyMessage}`;
       return;
     }
     
@@ -594,6 +761,64 @@ async function initializeCharts() {
       });
     }
     
+    if (charts.volume) charts.volume.destroy();
+    const volumeCtx = document.getElementById('volume-chart')?.getContext('2d');
+    if (volumeCtx) {
+      let filteredWorkouts = userWorkouts;
+      const now = new Date();
+      
+      if (progressPeriod === 'week') {
+        const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        filteredWorkouts = userWorkouts.filter(w => new Date(w.date) >= weekAgo);
+      } else if (progressPeriod === 'month') {
+        const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        filteredWorkouts = userWorkouts.filter(w => new Date(w.date) >= monthAgo);
+      }
+      
+      const volumeByDate = {};
+      filteredWorkouts.forEach(w => {
+        const date = new Date(w.date).toLocaleDateString();
+        const sets = parseInt(w.sets) || 0;
+        volumeByDate[date] = (volumeByDate[date] || 0) + sets;
+      });
+      
+      const volumeEntries = Object.entries(volumeByDate)
+        .map(([date, volume]) => ({ date: new Date(date), volume }))
+        .sort((a, b) => a.date - b.date);
+      
+      const volumeLabels = volumeEntries.map(e => `${e.date.getMonth() + 1}/${e.date.getDate()}`);
+      const volumeData = volumeEntries.map(e => e.volume);
+      
+      charts.volume = new Chart(volumeCtx, {
+        type: 'bar',
+        data: {
+          labels: volumeLabels,
+          datasets: [{
+            label: 'Total Sets',
+            data: volumeData,
+            backgroundColor: '#00ccff',
+            borderRadius: 8
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: true,
+          scales: {
+            y: {
+              beginAtZero: true,
+              grid: { color: '#2a2a2a' },
+              ticks: { color: '#b5b5b5', stepSize: 1 }
+            },
+            x: {
+              grid: { color: '#2a2a2a' },
+              ticks: { color: '#b5b5b5', maxRotation: 45, minRotation: 0 }
+            }
+          },
+          plugins: { legend: { display: false } }
+        }
+      });
+    }
+    
     renderPersonalRecords();
   } catch (e) {
     console.error('Failed to load chart data:', e);
@@ -697,7 +922,6 @@ async function toggleEditMode() {
   const sportSelectorContainer = document.getElementById('profile-sport-selector-container');
   const slider = document.getElementById('weekly-goal-slider');
   const sportsContainer = document.getElementById('sports-selector-container');
-  const exercisesContainer = document.getElementById('exercises-list-container');
   
   if (isEditMode) {
     bioElement.contentEditable = true;
@@ -716,9 +940,6 @@ async function toggleEditMode() {
     
     slider.disabled = false;
     sportsContainer.style.display = 'block';
-    exercisesContainer.style.display = 'block';
-    
-    await renderExercisesList();
     
     slider.oninput = function() {
       document.getElementById('goal-display').textContent = this.value;
@@ -737,32 +958,8 @@ async function toggleEditMode() {
     
     slider.disabled = true;
     sportsContainer.style.display = 'none';
-    exercisesContainer.style.display = 'none';
     
     saveProfile();
-  }
-}
-
-async function renderExercisesList() {
-  try {
-    const exercises = await api.exercises.list();
-    const container = document.getElementById('exercises-list');
-    
-    let html = '';
-    for (const [sport, exerciseList] of Object.entries(exercises)) {
-      html += `
-        <div class="exercise-sport-section">
-          <h4>${sport}</h4>
-          <ul class="exercise-list">
-            ${exerciseList.map(ex => `<li>${ex}</li>`).join('')}
-          </ul>
-        </div>
-      `;
-    }
-    
-    container.innerHTML = html;
-  } catch (e) {
-    console.error('Failed to load exercises:', e);
   }
 }
 
@@ -814,20 +1011,27 @@ async function saveProfile() {
 }
 
 function updateWeeklyProgress() {
-  const currentWeek = userWorkouts.filter(w => {
+  const weekAgo = new Date();
+  weekAgo.setDate(weekAgo.getDate() - 7);
+  weekAgo.setHours(0, 0, 0, 0);
+  
+  const workoutsThisWeek = userWorkouts.filter(w => {
     const workoutDate = new Date(w.date);
-    const weekAgo = new Date();
-    weekAgo.setDate(weekAgo.getDate() - 7);
     return workoutDate >= weekAgo;
-  }).length;
+  });
+  
+  const uniqueDays = new Set(workoutsThisWeek.map(w => {
+    const date = new Date(w.date);
+    return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+  })).size;
   
   const goal = currentUser?.weeklyGoal || 5;
-  const percentage = Math.round((currentWeek / goal) * 100);
+  const percentage = Math.round((uniqueDays / goal) * 100);
   
   const label = document.getElementById('weekly-progress-label');
   const progress = document.getElementById('weekly-progress');
   
-  if (label) label.textContent = `${currentWeek}/${goal}`;
+  if (label) label.textContent = `${uniqueDays}/${goal}`;
   if (progress) progress.style.width = `${Math.min(percentage, 100)}%`;
 }
 
@@ -887,8 +1091,27 @@ function renderAthletes() {
     </div>
   `;
   
-  recommendedContainer.innerHTML = allAthletes.slice(0, 3).map(athleteHTML).join('');
-  otherContainer.innerHTML = allAthletes.slice(3).map(athleteHTML).join('');
+  const userSports = currentUser?.sports || [];
+  
+  const recommendedAthletes = allAthletes.filter(athlete => {
+    return athlete.sports.some(sport => userSports.includes(sport));
+  });
+  
+  const otherAthletes = allAthletes.filter(athlete => {
+    return !athlete.sports.some(sport => userSports.includes(sport));
+  });
+  
+  if (recommendedAthletes.length === 0) {
+    recommendedContainer.innerHTML = '<p style="text-align: center; color: #b5b5b5;">No athletes with matching sports found</p>';
+  } else {
+    recommendedContainer.innerHTML = recommendedAthletes.map(athleteHTML).join('');
+  }
+  
+  if (otherAthletes.length === 0) {
+    otherContainer.innerHTML = '<p style="text-align: center; color: #b5b5b5;">No other athletes found</p>';
+  } else {
+    otherContainer.innerHTML = otherAthletes.map(athleteHTML).join('');
+  }
 }
 
 async function toggleFollow(userId) {

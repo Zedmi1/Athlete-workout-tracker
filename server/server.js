@@ -313,7 +313,7 @@ app.post("/api/workouts", async (req, res) => {
     return res.status(401).json({ error: "Not authenticated" });
   }
 
-  const { exercise, sport, sets, reps, distance, duration, notes } = req.body;
+  const { exercise, sport, sets, reps, distance, duration, notes, workoutDate } = req.body;
 
   if (!exercise || !sport) {
     return res.status(400).json({ error: "Exercise and sport are required" });
@@ -326,10 +326,12 @@ app.post("/api/workouts", async (req, res) => {
     );
     const sportId = sportResult.rows.length > 0 ? sportResult.rows[0].id : null;
 
+    const workoutTimestamp = workoutDate ? new Date(workoutDate) : new Date();
+
     const result = await db.query(
-      `INSERT INTO workouts (user_id, exercise, sport_id, sets, reps, distance, duration, notes)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-       RETURNING id, exercise, sets, reps, distance, duration, notes, created_at`,
+      `INSERT INTO workouts (user_id, exercise, sport_id, sets, reps, distance, duration, notes, workout_date)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       RETURNING id, exercise, sets, reps, distance, duration, notes, workout_date`,
       [
         userId,
         exercise,
@@ -339,6 +341,7 @@ app.post("/api/workouts", async (req, res) => {
         distance || null,
         duration || null,
         notes || null,
+        workoutTimestamp,
       ],
     );
 
@@ -352,12 +355,12 @@ app.post("/api/workouts", async (req, res) => {
       distance: workout.distance,
       duration: workout.duration,
       notes: workout.notes,
-      date: new Date(workout.created_at).toLocaleDateString("en-US", {
+      date: new Date(workout.workout_date).toLocaleDateString("en-US", {
         month: "short",
         day: "numeric",
         year: "numeric",
       }),
-      time: new Date(workout.created_at).toLocaleTimeString("en-US", {
+      time: new Date(workout.workout_date).toLocaleTimeString("en-US", {
         hour: "2-digit",
         minute: "2-digit",
       }),
@@ -367,6 +370,113 @@ app.post("/api/workouts", async (req, res) => {
   } catch (e) {
     console.error("Create workout error:", e);
     res.status(500).json({ error: "Failed to create workout" });
+  }
+});
+
+app.put("/api/workouts/:id", async (req, res) => {
+  const sessionId = req.headers["x-session-id"];
+  const userId = sessions.get(sessionId);
+
+  if (!userId) {
+    return res.status(401).json({ error: "Not authenticated" });
+  }
+
+  const workoutId = req.params.id;
+  const { exercise, sport, sets, reps, distance, duration, notes, workoutDate } = req.body;
+
+  if (!exercise || !sport) {
+    return res.status(400).json({ error: "Exercise and sport are required" });
+  }
+
+  try {
+    const checkOwnership = await db.query(
+      "SELECT user_id FROM workouts WHERE id = $1",
+      [workoutId],
+    );
+
+    if (checkOwnership.rows.length === 0) {
+      return res.status(404).json({ error: "Workout not found" });
+    }
+
+    if (checkOwnership.rows[0].user_id !== userId) {
+      return res
+        .status(403)
+        .json({ error: "Not authorized to update this workout" });
+    }
+
+    const sportResult = await db.query(
+      "SELECT id FROM sports WHERE name = $1",
+      [sport],
+    );
+    const sportId = sportResult.rows.length > 0 ? sportResult.rows[0].id : null;
+
+    const workoutTimestamp = workoutDate ? new Date(workoutDate) : null;
+    
+    const updateFields = [];
+    const updateValues = [];
+    let paramCount = 1;
+    
+    updateFields.push(`exercise = $${paramCount++}`);
+    updateValues.push(exercise);
+    
+    updateFields.push(`sport_id = $${paramCount++}`);
+    updateValues.push(sportId);
+    
+    updateFields.push(`sets = $${paramCount++}`);
+    updateValues.push(sets || null);
+    
+    updateFields.push(`reps = $${paramCount++}`);
+    updateValues.push(reps || null);
+    
+    updateFields.push(`distance = $${paramCount++}`);
+    updateValues.push(distance || null);
+    
+    updateFields.push(`duration = $${paramCount++}`);
+    updateValues.push(duration || null);
+    
+    updateFields.push(`notes = $${paramCount++}`);
+    updateValues.push(notes || null);
+    
+    if (workoutTimestamp) {
+      updateFields.push(`workout_date = $${paramCount++}`);
+      updateValues.push(workoutTimestamp);
+    }
+    
+    updateValues.push(workoutId);
+
+    const result = await db.query(
+      `UPDATE workouts 
+       SET ${updateFields.join(', ')}
+       WHERE id = $${paramCount}
+       RETURNING id, exercise, sets, reps, distance, duration, notes, workout_date`,
+      updateValues,
+    );
+
+    const workout = result.rows[0];
+    res.json({
+      id: workout.id,
+      exercise: workout.exercise,
+      sport,
+      sets: workout.sets,
+      reps: workout.reps,
+      distance: workout.distance,
+      duration: workout.duration,
+      notes: workout.notes,
+      date: new Date(workout.workout_date).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      }),
+      time: new Date(workout.workout_date).toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+      likes: 0,
+      liked: false,
+    });
+  } catch (e) {
+    console.error("Update workout error:", e);
+    res.status(500).json({ error: "Failed to update workout" });
   }
 });
 
@@ -415,12 +525,12 @@ app.get("/api/workouts/mine", async (req, res) => {
   try {
     const result = await db.query(
       `SELECT w.id, w.exercise, s.name as sport, w.sets, w.reps, w.distance, w.duration, 
-              w.notes, w.likes, w.created_at,
+              w.notes, w.likes, w.workout_date,
               (SELECT COUNT(*) FROM workout_likes WHERE workout_id = w.id AND user_id = $1) as user_liked
        FROM workouts w
        LEFT JOIN sports s ON w.sport_id = s.id
        WHERE w.user_id = $1
-       ORDER BY w.created_at DESC`,
+       ORDER BY w.workout_date DESC`,
       [userId],
     );
 
@@ -433,12 +543,12 @@ app.get("/api/workouts/mine", async (req, res) => {
       distance: w.distance || "-",
       duration: w.duration || "-",
       notes: w.notes,
-      date: new Date(w.created_at).toLocaleDateString("en-US", {
+      date: new Date(w.workout_date).toLocaleDateString("en-US", {
         month: "short",
         day: "numeric",
         year: "numeric",
       }),
-      time: new Date(w.created_at).toLocaleTimeString("en-US", {
+      time: new Date(w.workout_date).toLocaleTimeString("en-US", {
         hour: "2-digit",
         minute: "2-digit",
       }),
@@ -474,25 +584,25 @@ app.get("/api/workouts/feed", async (req, res) => {
     if (sportIds.length === 0) {
       query = `
         SELECT w.id, u.name as author, s.name as sport, w.exercise, 
-               w.sets, w.reps, w.distance, w.duration, w.likes, w.created_at,
+               w.sets, w.reps, w.distance, w.duration, w.notes, w.likes, w.workout_date,
                (SELECT COUNT(*) FROM workout_likes WHERE workout_id = w.id AND user_id = $1) as user_liked
         FROM workouts w
         JOIN users u ON w.user_id = u.id
         LEFT JOIN sports s ON w.sport_id = s.id
-        ORDER BY w.created_at DESC
+        ORDER BY w.workout_date DESC
         LIMIT 50
       `;
       params = [userId];
     } else {
       query = `
         SELECT w.id, u.name as author, s.name as sport, w.exercise,
-               w.sets, w.reps, w.distance, w.duration, w.likes, w.created_at,
+               w.sets, w.reps, w.distance, w.duration, w.notes, w.likes, w.workout_date,
                (SELECT COUNT(*) FROM workout_likes WHERE workout_id = w.id AND user_id = $1) as user_liked
         FROM workouts w
         JOIN users u ON w.user_id = u.id
         LEFT JOIN sports s ON w.sport_id = s.id
         WHERE w.sport_id = ANY($2::int[])
-        ORDER BY w.created_at DESC
+        ORDER BY w.workout_date DESC
         LIMIT 50
       `;
       params = [userId, sportIds];
@@ -508,7 +618,7 @@ app.get("/api/workouts/feed", async (req, res) => {
       if (w.duration) stats.push(w.duration);
 
       const now = new Date();
-      const createdAt = new Date(w.created_at);
+      const createdAt = new Date(w.workout_date);
       const diffMs = now - createdAt;
       const diffMins = Math.floor(diffMs / 60000);
       const diffHours = Math.floor(diffMs / 3600000);
@@ -530,6 +640,7 @@ app.get("/api/workouts/feed", async (req, res) => {
         avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${w.author}`,
         workout: w.exercise,
         stats: stats.join(" • ") || "No stats",
+        notes: w.notes || '',
         time: timeAgo,
         likes: w.likes,
         liked: w.user_liked > 0,
@@ -597,14 +708,14 @@ app.get("/api/workouts/stats", async (req, res) => {
   try {
     let dateFilter = "";
     if (period === "week") {
-      dateFilter = "AND created_at >= NOW() - INTERVAL '7 days'";
+      dateFilter = "AND workout_date >= NOW() - INTERVAL '7 days'";
     } else if (period === "month") {
-      dateFilter = "AND created_at >= NOW() - INTERVAL '30 days'";
+      dateFilter = "AND workout_date >= NOW() - INTERVAL '30 days'";
     }
 
     const result = await db.query(
       `SELECT 
-        DATE(created_at) as date,
+        DATE(workout_date) as date,
         COUNT(*) as workout_count,
         SUM(CASE 
           WHEN duration ~ '^[0-9]+ min$' THEN CAST(REGEXP_REPLACE(duration, '[^0-9]', '', 'g') AS INTEGER)
@@ -615,7 +726,7 @@ app.get("/api/workouts/stats", async (req, res) => {
         END) as total_duration
        FROM workouts
        WHERE user_id = $1 ${dateFilter}
-       GROUP BY DATE(created_at)
+       GROUP BY DATE(workout_date)
        ORDER BY date DESC`,
       [userId],
     );
@@ -640,9 +751,9 @@ app.get("/api/workouts/sport-distribution", async (req, res) => {
   try {
     let dateFilter = "";
     if (period === "week") {
-      dateFilter = "AND w.created_at >= NOW() - INTERVAL '7 days'";
+      dateFilter = "AND w.workout_date >= NOW() - INTERVAL '7 days'";
     } else if (period === "month") {
-      dateFilter = "AND w.created_at >= NOW() - INTERVAL '30 days'";
+      dateFilter = "AND w.workout_date >= NOW() - INTERVAL '30 days'";
     }
 
     const result = await db.query(

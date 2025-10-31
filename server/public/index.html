@@ -148,7 +148,24 @@
 
                 <div id="workout-form" class="card" style="display: none;">
                     <h2>New Workout</h2>
-                    <form onsubmit="saveWorkout(event)">
+                    <div id="session-exercises-list" style="display: none; margin-bottom: 20px; padding: 16px; background: #2a2a2a; border-radius: 8px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                            <h3 style="margin: 0; font-size: 16px;">Exercises in this workout:</h3>
+                            <span id="session-exercise-count" style="color: #00ff88;">0 exercises</span>
+                        </div>
+                        <div id="session-exercises-container"></div>
+                        <button type="button" class="btn-primary full-width" onclick="saveAllExercises()" style="margin-top: 12px;">
+                            💾 Save All Exercises
+                        </button>
+                    </div>
+                    <form onsubmit="addExerciseToSession(event)">
+                        <div class="form-group" style="background: #2a2a2a; padding: 12px; border-radius: 8px; margin-bottom: 16px;">
+                            <label style="display: flex; align-items: center; gap: 8px;">
+                                📅 Workout Date & Time
+                                <span style="font-size: 12px; color: #b5b5b5;">(applies to all exercises)</span>
+                            </label>
+                            <input type="datetime-local" id="workout-date">
+                        </div>
                         <div class="form-grid">
                             <div class="form-group">
                                 <label>Exercise Name *</label>
@@ -186,7 +203,10 @@
                             <label>Notes</label>
                             <textarea id="workout-notes" rows="3" placeholder="How did it go?"></textarea>
                         </div>
-                        <button type="submit" class="btn-primary full-width">Save Workout</button>
+                        <div style="display: flex; gap: 12px;">
+                            <button type="submit" class="btn-secondary" style="flex: 1;">+ Add Exercise</button>
+                            <button type="button" class="btn-primary" onclick="saveWorkout(event)" style="flex: 1;">Save Workout</button>
+                        </div>
                     </form>
                 </div>
 
@@ -206,14 +226,6 @@
                     <button class="filter-btn" onclick="setProgressPeriod('week')">Week</button>
                     <button class="filter-btn active" onclick="setProgressPeriod('month')">Month</button>
                     <button class="filter-btn" onclick="setProgressPeriod('all')">All Time</button>
-                    <select id="sport-filter" class="sport-select">
-                        <option>All Sports</option>
-                        <option>Football</option>
-                        <option>Basketball</option>
-                        <option>Athletics</option>
-                        <option>Swimming</option>
-                        <option>Cycling</option>
-                    </select>
                 </div>
 
                 <div class="charts-grid">
@@ -225,11 +237,14 @@
                         <h2>Sport Distribution</h2>
                         <canvas id="sport-distribution-chart"></canvas>
                     </div>
-                </div>
-
-                <div class="card">
-                    <h2>Average Workout Duration</h2>
-                    <canvas id="duration-chart"></canvas>
+                    <div class="card">
+                        <h2>Average Workout Duration (minutes)</h2>
+                        <canvas id="duration-chart"></canvas>
+                    </div>
+                    <div class="card">
+                        <h2>Total Volume (Sets)</h2>
+                        <canvas id="volume-chart"></canvas>
+                    </div>
                 </div>
 
                 <div class="page-header">
@@ -287,13 +302,6 @@
                                     </div>
                                     <div id="sports-checkboxes" class="sports-checkbox-group"></div>
                                 </div>
-
-                                <div class="settings-item" id="exercises-list-container" style="display: none;">
-                                    <div class="settings-header">
-                                        <span>💪 Example Exercises by Sport</span>
-                                    </div>
-                                    <div id="exercises-list" class="exercises-list"></div>
-                                </div>
                             </div>
                         </div>
 
@@ -326,15 +334,6 @@
                         <span class="search-icon">🔍</span>
                         <input type="text" id="athlete-search" placeholder="Search by username..." oninput="filterAthletes()">
                     </div>
-                    <select id="athlete-sport-filter" class="sport-select" onchange="filterAthletes()">
-                        <option>All Sports</option>
-                        <option>Football</option>
-                        <option>Basketball</option>
-                        <option>Athletics</option>
-                        <option>Swimming</option>
-                        <option>Cycling</option>
-                        <option>Tennis</option>
-                    </select>
                 </div>
 
                 <div id="recommended-section">
