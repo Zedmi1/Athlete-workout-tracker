@@ -1200,6 +1200,8 @@ input[type="range"]::-moz-range-thumb {
 
 .toggle-label {
     display: flex;
+    flex-direction: row-reverse;
+    justify-content: flex-end;
     align-items: center;
     gap: 16px;
     cursor: pointer;
