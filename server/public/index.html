@@ -43,6 +43,19 @@
                     <div id="register-sports-checkboxes" class="sports-checkbox-group"></div>
                 </div>
 
+                <div id="weekly-goal-field" class="form-group" style="display: none;">
+                    <label>Weekly Workout Goal</label>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <span style="color: #b5b5b5;">How many times per week do you want to work out?</span>
+                        <span id="register-goal-value" style="color: #00ff88; font-weight: bold;">5 workouts/week</span>
+                    </div>
+                    <input type="range" id="register-weekly-goal-slider" min="1" max="7" value="5" oninput="updateRegisterGoalDisplay(this.value)">
+                    <div style="display: flex; justify-content: space-between; margin-top: 4px; color: #b5b5b5; font-size: 12px;">
+                        <span>1/week</span>
+                        <span>7/week</span>
+                    </div>
+                </div>
+
                 <button type="submit" class="btn-primary" id="auth-submit-btn">Continue to App</button>
             </form>
         </div>
@@ -104,7 +117,12 @@
 
                     <div class="sidebar">
                         <div class="card">
-                            <h2>This Week</h2>
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                                <h2 style="margin: 0;">This Week</h2>
+                                <button class="btn-secondary" onclick="openEditGoal()" style="padding: 6px 12px; font-size: 13px;">
+                                    ⚙️ Edit Goal
+                                </button>
+                            </div>
                             <div class="progress-section">
                                 <div class="progress-item">
                                     <div class="progress-header">
@@ -118,10 +136,10 @@
                                 <div class="progress-item">
                                     <div class="progress-header">
                                         <span>Goal Progress</span>
-                                        <span class="progress-label">100%</span>
+                                        <span class="progress-label" id="weekly-progress-percentage">100%</span>
                                     </div>
                                     <div class="progress-bar">
-                                        <div class="progress-fill secondary" style="width: 100%"></div>
+                                        <div class="progress-fill secondary" id="weekly-progress-percentage-bar" style="width: 100%"></div>
                                     </div>
                                 </div>
                             </div>

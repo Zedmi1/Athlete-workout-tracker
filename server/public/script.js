@@ -8,6 +8,7 @@ let editingWorkoutId = null;
 let currentSessionExercises = [];
 let progressPeriod = 'month';
 let charts = {};
+let feedDisplayCount = 10;
 
 const API_BASE = '';
 
@@ -159,7 +160,12 @@ function switchTab(mode) {
   
   document.getElementById('name-field').style.display = isLoginMode ? 'none' : 'block';
   document.getElementById('sport-field').style.display = isLoginMode ? 'none' : 'block';
+  document.getElementById('weekly-goal-field').style.display = isLoginMode ? 'none' : 'block';
   document.getElementById('auth-submit-btn').textContent = isLoginMode ? 'Login' : 'Register';
+}
+
+function updateRegisterGoalDisplay(value) {
+  document.getElementById('register-goal-value').textContent = `${value} workout${value > 1 ? 's' : ''}/week`;
 }
 
 async function handleLogin(event) {
@@ -183,7 +189,8 @@ async function handleLogin(event) {
         return;
       }
       
-      result = await api.auth.register({ name, email, password, sports });
+      const weeklyGoal = parseInt(document.getElementById('register-weekly-goal-slider').value);
+      result = await api.auth.register({ name, email, password, sports, weeklyGoal });
     }
     
     sessionId = result.sessionId;
@@ -270,7 +277,9 @@ function renderActivityFeed() {
   
   feedContainer.innerHTML = '';
   
-  activityFeed.forEach(item => {
+  const itemsToShow = activityFeed.slice(0, feedDisplayCount);
+  
+  itemsToShow.forEach(item => {
     const feedItem = document.createElement('div');
     feedItem.className = 'feed-item';
     feedItem.innerHTML = `
@@ -294,6 +303,20 @@ function renderActivityFeed() {
     `;
     feedContainer.appendChild(feedItem);
   });
+  
+  if (activityFeed.length > feedDisplayCount) {
+    const viewMoreBtn = document.createElement('button');
+    viewMoreBtn.className = 'btn-secondary full-width';
+    viewMoreBtn.textContent = `View More (${activityFeed.length - feedDisplayCount} more workouts)`;
+    viewMoreBtn.style.marginTop = '16px';
+    viewMoreBtn.onclick = loadMoreFeedItems;
+    feedContainer.appendChild(viewMoreBtn);
+  }
+}
+
+function loadMoreFeedItems() {
+  feedDisplayCount += 10;
+  renderActivityFeed();
 }
 
 async function toggleLike(id, source) {
@@ -518,7 +541,6 @@ function editWorkout(workoutId) {
   const form = document.getElementById('workout-form');
   form.style.display = 'block';
   form.querySelector('h2').textContent = 'Edit Workout';
-  form.querySelector('button[type="submit"]').textContent = 'Update Workout';
   document.getElementById('form-toggle-text').textContent = 'Cancel';
   
   window.scrollTo({ top: form.offsetTop - 20, behavior: 'smooth' });
@@ -595,7 +617,7 @@ function renderWorkouts() {
         <button class="like-btn ${workout.liked ? 'liked' : ''}" onclick="toggleLike('${workout.id}', 'workout')">
           ${workout.liked ? '❤️' : '🤍'} ${workout.likes}
         </button>
-        <button class="btn-secondary" onclick="editWorkout('${workout.id}')" title="Edit workout" style="padding: 8px 16px; margin-right: 8px;">
+        <button class="edit-btn" onclick="editWorkout('${workout.id}')" title="Edit workout">
           ✏️ Edit
         </button>
         <button class="delete-btn" onclick="deleteWorkout('${workout.id}')" title="Delete workout">
@@ -1031,9 +1053,39 @@ function updateWeeklyProgress() {
   
   const label = document.getElementById('weekly-progress-label');
   const progress = document.getElementById('weekly-progress');
+  const percentageLabel = document.getElementById('weekly-progress-percentage');
+  const percentageBar = document.getElementById('weekly-progress-percentage-bar');
   
   if (label) label.textContent = `${uniqueDays}/${goal}`;
   if (progress) progress.style.width = `${Math.min(percentage, 100)}%`;
+  if (percentageLabel) percentageLabel.textContent = `${Math.min(percentage, 100)}%`;
+  if (percentageBar) percentageBar.style.width = `${Math.min(percentage, 100)}%`;
+}
+
+function openEditGoal() {
+  const currentGoal = currentUser?.weeklyGoal || 5;
+  const newGoal = prompt(`Enter your new weekly workout goal (1-7):`, currentGoal);
+  
+  if (newGoal === null) return;
+  
+  const goalNumber = parseInt(newGoal);
+  if (isNaN(goalNumber) || goalNumber < 1 || goalNumber > 7) {
+    alert('Please enter a number between 1 and 7');
+    return;
+  }
+  
+  updateWeeklyGoal(goalNumber);
+}
+
+async function updateWeeklyGoal(newGoal) {
+  try {
+    await api.profile.update({ weeklyGoal: newGoal });
+    currentUser.weeklyGoal = newGoal;
+    updateWeeklyProgress();
+    alert(`Weekly goal updated to ${newGoal} workout${newGoal > 1 ? 's' : ''} per week!`);
+  } catch (e) {
+    alert('Failed to update weekly goal: ' + e.message);
+  }
 }
 
 let allAthletes = [];

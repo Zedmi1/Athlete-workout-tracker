@@ -20,7 +20,7 @@ app.get("/api/health", (req, res) => {
 });
 
 app.post("/api/auth/register", async (req, res) => {
-  const { name, email, password, sports } = req.body;
+  const { name, email, password, sports, weeklyGoal } = req.body;
 
   if (!name || !email || !password) {
     return res.status(400).json({ error: "Missing required fields" });
@@ -36,9 +36,10 @@ app.post("/api/auth/register", async (req, res) => {
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
+    const goalValue = weeklyGoal || 5;
     const userResult = await db.query(
-      "INSERT INTO users (name, email, password_hash) VALUES ($1, $2, $3) RETURNING id, name, email, bio, weekly_goal",
-      [name, email, passwordHash],
+      "INSERT INTO users (name, email, password_hash, weekly_goal) VALUES ($1, $2, $3, $4) RETURNING id, name, email, bio, weekly_goal",
+      [name, email, passwordHash, goalValue],
     );
 
     const user = userResult.rows[0];
