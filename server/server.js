@@ -1024,6 +1024,7 @@ async function initializeDatabase() {
     }
 
     await createSampleWorkouts();
+    await addMissingAthletes();
   } catch (e) {
     console.error("Database initialization error:", e);
   }
@@ -1040,13 +1041,29 @@ async function createSampleWorkouts() {
     console.log("Creating sample users and workouts...");
     const sampleUsers = [
       { name: "Alex Johnson", email: "alex@example.com", sport: "Football" },
+      { name: "Carlos Rodriguez", email: "carlos@example.com", sport: "Football" },
+      { name: "Marcus Williams", email: "marcus@example.com", sport: "Football" },
       { name: "Maria Garcia", email: "maria@example.com", sport: "Basketball" },
+      { name: "Tyrell Jackson", email: "tyrell@example.com", sport: "Basketball" },
+      { name: "Ashley Thompson", email: "ashley@example.com", sport: "Basketball" },
       { name: "James Chen", email: "james@example.com", sport: "Athletics" },
+      { name: "Emily White", email: "emily@example.com", sport: "Athletics" },
+      { name: "Jordan Lee", email: "jordan@example.com", sport: "Athletics" },
       { name: "Sarah Williams", email: "sarah@example.com", sport: "Swimming" },
+      { name: "Ryan Martinez", email: "ryan@example.com", sport: "Swimming" },
+      { name: "Nicole Brown", email: "nicole@example.com", sport: "Swimming" },
       { name: "Tom Anderson", email: "tom@example.com", sport: "Cycling" },
+      { name: "Sophie Laurent", email: "sophie@example.com", sport: "Cycling" },
+      { name: "Chris Miller", email: "chris@example.com", sport: "Cycling" },
       { name: "Emma Davis", email: "emma@example.com", sport: "Tennis" },
+      { name: "Rafael Silva", email: "rafael@example.com", sport: "Tennis" },
+      { name: "Jennifer Taylor", email: "jennifer@example.com", sport: "Tennis" },
       { name: "Mike Brown", email: "mike@example.com", sport: "Volleyball" },
+      { name: "Olivia Moore", email: "olivia@example.com", sport: "Volleyball" },
+      { name: "Lucas Martin", email: "lucas@example.com", sport: "Volleyball" },
       { name: "Lisa Wilson", email: "lisa@example.com", sport: "Golf" },
+      { name: "David Clark", email: "david@example.com", sport: "Golf" },
+      { name: "Hannah Anderson", email: "hannah@example.com", sport: "Golf" },
     ];
 
     for (const user of sampleUsers) {
@@ -1330,6 +1347,77 @@ function getSampleWorkoutsForSport(sport) {
   };
 
   return workoutData[sport] || [];
+}
+
+async function addMissingAthletes() {
+  try {
+    const newAthletes = [
+      { name: "Carlos Rodriguez", email: "carlos@example.com", sport: "Football" },
+      { name: "Marcus Williams", email: "marcus@example.com", sport: "Football" },
+      { name: "Tyrell Jackson", email: "tyrell@example.com", sport: "Basketball" },
+      { name: "Ashley Thompson", email: "ashley@example.com", sport: "Basketball" },
+      { name: "Emily White", email: "emily@example.com", sport: "Athletics" },
+      { name: "Jordan Lee", email: "jordan@example.com", sport: "Athletics" },
+      { name: "Ryan Martinez", email: "ryan@example.com", sport: "Swimming" },
+      { name: "Nicole Brown", email: "nicole@example.com", sport: "Swimming" },
+      { name: "Sophie Laurent", email: "sophie@example.com", sport: "Cycling" },
+      { name: "Chris Miller", email: "chris@example.com", sport: "Cycling" },
+      { name: "Rafael Silva", email: "rafael@example.com", sport: "Tennis" },
+      { name: "Jennifer Taylor", email: "jennifer@example.com", sport: "Tennis" },
+      { name: "Olivia Moore", email: "olivia@example.com", sport: "Volleyball" },
+      { name: "Lucas Martin", email: "lucas@example.com", sport: "Volleyball" },
+      { name: "David Clark", email: "david@example.com", sport: "Golf" },
+      { name: "Hannah Anderson", email: "hannah@example.com", sport: "Golf" },
+    ];
+
+    for (const athlete of newAthletes) {
+      const existingUser = await db.query(
+        "SELECT id FROM users WHERE email = $1",
+        [athlete.email]
+      );
+
+      if (existingUser.rows.length === 0) {
+        const passwordHash = await bcrypt.hash("sample123", 10);
+        const userResult = await db.query(
+          "INSERT INTO users (name, email, password_hash, weekly_goal) VALUES ($1, $2, $3, $4) RETURNING id",
+          [athlete.name, athlete.email, passwordHash, 5]
+        );
+        const userId = userResult.rows[0].id;
+
+        const sportResult = await db.query(
+          "SELECT id FROM sports WHERE name = $1",
+          [athlete.sport]
+        );
+        const sportId = sportResult.rows[0].id;
+
+        await db.query(
+          "INSERT INTO user_sports (user_id, sport_id) VALUES ($1, $2)",
+          [userId, sportId]
+        );
+
+        const workouts = getSampleWorkoutsForSport(athlete.sport);
+        for (const workout of workouts) {
+          await db.query(
+            "INSERT INTO workouts (user_id, exercise, sport_id, sets, reps, distance, duration, notes, workout_date) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+            [
+              userId,
+              workout.exercise,
+              sportId,
+              workout.sets,
+              workout.reps,
+              workout.distance,
+              workout.duration,
+              workout.notes,
+              new Date(Date.now() - workout.daysAgo * 24 * 60 * 60 * 1000),
+            ]
+          );
+        }
+        console.log(`Added athlete: ${athlete.name}`);
+      }
+    }
+  } catch (e) {
+    console.error("Error adding missing athletes:", e);
+  }
 }
 
 const PORT = process.env.PORT || 5000;

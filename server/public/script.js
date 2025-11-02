@@ -93,6 +93,7 @@ async function initializeApp() {
         loadUserWorkouts(),
         loadActivityFeed()
       ]);
+      updateWeeklyProgress();
       navigateTo('home');
     } catch (e) {
       console.error('Auto-login failed:', e);
@@ -203,6 +204,7 @@ async function handleLogin(event) {
       loadUserWorkouts(),
       loadActivityFeed()
     ]);
+    updateWeeklyProgress();
     navigateTo('home');
     
     document.getElementById('auth-form').reset();
@@ -245,6 +247,7 @@ function navigateTo(screen) {
   
   if (screen === 'home') {
     renderActivityFeed();
+    updateWeeklyProgress();
   } else if (screen === 'workouts') {
     renderWorkouts();
   } else if (screen === 'progress') {
@@ -576,12 +579,36 @@ async function deleteWorkout(workoutId) {
   
   try {
     await api.workouts.delete(workoutId);
-    userWorkouts = userWorkouts.filter(w => w.id != workoutId);
-    renderWorkouts();
+    await loadUserWorkouts();
     await loadActivityFeed();
-    await initializeCharts();
+    updateWeeklyProgress();
   } catch (e) {
     alert('Failed to delete workout: ' + e.message);
+  }
+}
+
+function editWorkoutSession(sessionId) {
+  const sessionWorkouts = userWorkouts.filter(w => w.sessionId == sessionId);
+  if (sessionWorkouts.length === 0) return;
+  
+  alert('Editing workout sessions is not yet supported. Please delete this session and create a new one with your changes.');
+}
+
+async function deleteWorkoutSession(sessionId) {
+  if (!confirm('Are you sure you want to delete this workout session? All exercises in this session will be deleted.')) {
+    return;
+  }
+  
+  try {
+    const workoutsInSession = userWorkouts.filter(w => w.sessionId == sessionId);
+    for (const workout of workoutsInSession) {
+      await api.workouts.delete(workout.id);
+    }
+    await loadUserWorkouts();
+    await loadActivityFeed();
+    updateWeeklyProgress();
+  } catch (e) {
+    alert('Failed to delete workout session: ' + e.message);
   }
 }
 
@@ -601,71 +628,62 @@ function renderWorkouts() {
     workoutItem.className = 'workout-item';
     
     if (item.sessionId && item.exercises) {
-      const carouselId = `carousel-${item.sessionId}`;
       const exercises = item.exercises;
       
-      workoutItem.innerHTML = `
-        <div class="workout-header">
-          <div class="workout-title-section">
-            <div class="workout-title-row">
-              <h3>Workout Session</h3>
-              <span class="session-badge">${exercises.length} Exercise${exercises.length > 1 ? 's' : ''}</span>
-            </div>
-            <div class="workout-meta">
-              <span>📅 ${item.date}</span>
-              <span>🕐 ${item.time}</span>
-            </div>
-          </div>
-        </div>
-        <div class="carousel-container" id="${carouselId}">
-          ${exercises.map((exercise, index) => {
-            const statsHTML = [];
-            if (exercise.sets && exercise.sets !== '-') {
-              statsHTML.push(`<div class="workout-stat"><p>Sets</p><p>${exercise.sets}</p></div>`);
-            }
-            if (exercise.reps && exercise.reps !== '-') {
-              statsHTML.push(`<div class="workout-stat"><p>Reps</p><p>${exercise.reps}</p></div>`);
-            }
-            if (exercise.distance && exercise.distance !== '-') {
-              statsHTML.push(`<div class="workout-stat"><p>Distance</p><p>${exercise.distance}</p></div>`);
-            }
-            if (exercise.duration && exercise.duration !== '-') {
-              statsHTML.push(`<div class="workout-stat"><p>Duration</p><p>${exercise.duration}</p></div>`);
-            }
-            
-            return `
-              <div class="carousel-slide ${index === 0 ? 'active' : ''}" data-slide="${index}">
-                <div class="exercise-info">
-                  <div class="exercise-title-row">
-                    <h4>${exercise.exercise}</h4>
-                    <span class="sport-badge">${exercise.sport}</span>
-                  </div>
-                  <div class="workout-stats">
-                    ${statsHTML.join('')}
-                  </div>
-                  ${exercise.notes ? `
-                    <div class="workout-notes">
-                      <p>Notes</p>
-                      <p>${exercise.notes}</p>
-                    </div>
-                  ` : ''}
-                </div>
+      const sessionHTML = exercises.map((exercise, index) => {
+        const statsHTML = [];
+        if (exercise.sets && exercise.sets !== '-') {
+          statsHTML.push(`<div class="workout-stat"><p>Sets</p><p>${exercise.sets}</p></div>`);
+        }
+        if (exercise.reps && exercise.reps !== '-') {
+          statsHTML.push(`<div class="workout-stat"><p>Reps</p><p>${exercise.reps}</p></div>`);
+        }
+        if (exercise.distance && exercise.distance !== '-') {
+          statsHTML.push(`<div class="workout-stat"><p>Distance</p><p>${exercise.distance}</p></div>`);
+        }
+        if (exercise.duration && exercise.duration !== '-') {
+          statsHTML.push(`<div class="workout-stat"><p>Duration</p><p>${exercise.duration}</p></div>`);
+        }
+        
+        return `
+          ${index > 0 ? '<div style="border-top: 1px solid #2a2a2a; margin: 16px 0;"></div>' : ''}
+          <div class="workout-header">
+            <div class="workout-title-section">
+              <div class="workout-title-row">
+                <h3>${exercise.exercise}</h3>
+                <span class="sport-badge">${exercise.sport}</span>
               </div>
-            `;
-          }).join('')}
-        </div>
-        ${exercises.length > 1 ? `
-          <div class="carousel-controls">
-            <button class="carousel-btn prev" onclick="changeSlide('${carouselId}', -1)">‹</button>
-            <span class="carousel-indicator">
-              <span class="current-slide">1</span> / ${exercises.length}
-            </span>
-            <button class="carousel-btn next" onclick="changeSlide('${carouselId}', 1)">›</button>
+              ${index === 0 ? `
+                <div class="workout-meta">
+                  <span>📅 ${item.date}</span>
+                  <span>🕐 ${item.time}</span>
+                </div>
+              ` : ''}
+            </div>
           </div>
-        ` : ''}
+          <div class="workout-stats">
+            ${statsHTML.join('')}
+          </div>
+          ${exercise.notes ? `
+            <div class="workout-notes">
+              <p>Notes</p>
+              <p>${exercise.notes}</p>
+            </div>
+          ` : ''}
+        `;
+      }).join('');
+      
+      workoutItem.innerHTML = `
+        ${sessionHTML}
         <div class="feed-actions">
-          <button class="like-btn" onclick="alert('Coming soon!')">
-            🤍 0
+          <button class="like-btn ${item.liked ? 'liked' : ''}" onclick="toggleLike('${item.id}', 'workout')">
+            ${item.liked ? '❤️' : '🤍'} ${item.likes || 0}
+          </button>
+          <button class="edit-btn" onclick="editWorkoutSession('${item.sessionId}')" title="Edit workout session">
+            ✏️ Edit
+          </button>
+          <button class="delete-btn" onclick="deleteWorkoutSession('${item.sessionId}')" title="Delete workout session">
+            🗑️ Delete
           </button>
         </div>
       `;
@@ -1225,8 +1243,6 @@ async function renderProfile() {
   document.getElementById('profile-bio').textContent = currentUser.bio || '';
   document.getElementById('profile-avatar').src = 
     `https://api.dicebear.com/7.x/avataaars/svg?seed=${currentUser.name}`;
-  document.getElementById('goal-display').textContent = currentUser.weeklyGoal || 5;
-  document.getElementById('weekly-goal-slider').value = currentUser.weeklyGoal || 5;
   
   setSelectedSports(currentUser.sports || []);
   
@@ -1248,20 +1264,6 @@ async function renderProfile() {
   }
 }
 
-function switchProfileTab(tab) {
-  const tabs = document.querySelectorAll('.profile-tabs .tab-btn');
-  tabs.forEach(t => t.classList.remove('active'));
-  
-  if (tab === 'info') {
-    tabs[0].classList.add('active');
-    document.getElementById('profile-info-tab').classList.add('active');
-    document.getElementById('profile-settings-tab').classList.remove('active');
-  } else {
-    tabs[1].classList.add('active');
-    document.getElementById('profile-info-tab').classList.remove('active');
-    document.getElementById('profile-settings-tab').classList.add('active');
-  }
-}
 
 async function toggleEditMode() {
   isEditMode = !isEditMode;
@@ -1273,8 +1275,6 @@ async function toggleEditMode() {
   const nameElement = document.getElementById('profile-name');
   const sportElement = document.getElementById('profile-sport');
   const sportSelectorContainer = document.getElementById('profile-sport-selector-container');
-  const slider = document.getElementById('weekly-goal-slider');
-  const sportsContainer = document.getElementById('sports-selector-container');
   
   if (isEditMode) {
     bioElement.contentEditable = true;
@@ -1290,13 +1290,6 @@ async function toggleEditMode() {
     sportElement.style.display = 'none';
     sportSelectorContainer.style.display = 'block';
     renderProfileSportsCheckboxes();
-    
-    slider.disabled = false;
-    sportsContainer.style.display = 'block';
-    
-    slider.oninput = function() {
-      document.getElementById('goal-display').textContent = this.value;
-    };
   } else {
     bioElement.contentEditable = false;
     bioElement.style.border = 'none';
@@ -1308,9 +1301,6 @@ async function toggleEditMode() {
     
     sportElement.style.display = 'block';
     sportSelectorContainer.style.display = 'none';
-    
-    slider.disabled = true;
-    sportsContainer.style.display = 'none';
     
     saveProfile();
   }
@@ -1339,8 +1329,8 @@ function getProfileSelectedSports() {
 async function saveProfile() {
   const name = document.getElementById('profile-name').textContent;
   const bio = document.getElementById('profile-bio').textContent;
-  const weeklyGoal = parseInt(document.getElementById('weekly-goal-slider').value);
   const sports = getProfileSelectedSports();
+  const weeklyGoal = currentUser.weeklyGoal || 5;
   
   if (sports.length === 0) {
     alert('Please select at least one sport interest');
@@ -1352,7 +1342,6 @@ async function saveProfile() {
     await api.profile.update({ name, bio, weeklyGoal, sports });
     currentUser.name = name;
     currentUser.bio = bio;
-    currentUser.weeklyGoal = weeklyGoal;
     currentUser.sports = sports;
     
     document.getElementById('profile-sport').textContent = sports.join(', ') + ' Athlete';
@@ -1364,6 +1353,11 @@ async function saveProfile() {
 }
 
 function updateWeeklyProgress() {
+  if (!currentUser) {
+    console.warn('updateWeeklyProgress called but currentUser is not set');
+    return;
+  }
+  
   const weekAgo = new Date();
   weekAgo.setDate(weekAgo.getDate() - 7);
   weekAgo.setHours(0, 0, 0, 0);
@@ -1378,7 +1372,7 @@ function updateWeeklyProgress() {
     return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
   })).size;
   
-  const goal = currentUser?.weeklyGoal || 5;
+  const goal = (currentUser.weeklyGoal && currentUser.weeklyGoal > 0) ? currentUser.weeklyGoal : 5;
   const percentage = Math.round((uniqueDays / goal) * 100);
   
   const label = document.getElementById('weekly-progress-label');
@@ -1419,12 +1413,16 @@ async function updateWeeklyGoal(newGoal) {
 }
 
 let allAthletes = [];
+let showAllRecommended = false;
+let showAllOther = false;
 
 async function filterAthletes() {
   const searchQuery = document.getElementById('athlete-search')?.value || '';
   
   try {
     allAthletes = await api.users.search(searchQuery);
+    showAllRecommended = false;
+    showAllOther = false;
     renderAthletes();
   } catch (e) {
     console.error('Failed to search athletes:', e);
@@ -1487,14 +1485,32 @@ function renderAthletes() {
   if (recommendedAthletes.length === 0) {
     recommendedContainer.innerHTML = '<p style="text-align: center; color: #b5b5b5;">No athletes with matching sports found</p>';
   } else {
-    recommendedContainer.innerHTML = recommendedAthletes.map(athleteHTML).join('');
+    const displayedRecommended = showAllRecommended ? recommendedAthletes : recommendedAthletes.slice(0, 3);
+    const needsViewMore = recommendedAthletes.length > 3 && !showAllRecommended;
+    
+    recommendedContainer.innerHTML = displayedRecommended.map(athleteHTML).join('') +
+      (needsViewMore ? '<button class="btn-secondary full-width" onclick="toggleViewRecommended()" style="margin-top: 1rem;">View More</button>' : '');
   }
   
   if (otherAthletes.length === 0) {
     otherContainer.innerHTML = '<p style="text-align: center; color: #b5b5b5;">No other athletes found</p>';
   } else {
-    otherContainer.innerHTML = otherAthletes.map(athleteHTML).join('');
+    const displayedOther = showAllOther ? otherAthletes : otherAthletes.slice(0, 3);
+    const needsViewMore = otherAthletes.length > 3 && !showAllOther;
+    
+    otherContainer.innerHTML = displayedOther.map(athleteHTML).join('') +
+      (needsViewMore ? '<button class="btn-secondary full-width" onclick="toggleViewOther()" style="margin-top: 1rem;">View More</button>' : '');
   }
+}
+
+function toggleViewRecommended() {
+  showAllRecommended = !showAllRecommended;
+  renderAthletes();
+}
+
+function toggleViewOther() {
+  showAllOther = !showAllOther;
+  renderAthletes();
 }
 
 async function toggleFollow(userId) {
